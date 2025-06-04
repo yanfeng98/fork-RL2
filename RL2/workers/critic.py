@@ -1,12 +1,11 @@
-from typing import Dict, List
 from collections import defaultdict
-from contextlib import nullcontext
 import torch
+from torch.nn.utils import clip_grad_norm_
 from transformers import AutoModelForTokenClassification
 from tqdm import tqdm
-from workers.base import Worker
-from utils.ring_attn import update_params_of_ring_attn
-from utils.comm import sum_across_processes
+from RL2.workers import Worker
+from RL2.utils.ring_attn import update_params_of_ring_attn
+from RL2.utils.comm import sum_across_processes
 
 
 class Critic(Worker):
@@ -22,7 +21,7 @@ class Critic(Worker):
 
         self.prepare_model_optimizer()
 
-    def forward(self, minibatch: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def forward(self, minibatch) -> torch.Tensor:
         update_params_of_ring_attn(
             minibatch["cu_seqlens"], self.sp_device_mesh["sp"]
         )
@@ -34,11 +33,7 @@ class Critic(Worker):
         ).logits.squeeze(-1) * minibatch["action_mask"]
 
     @torch.no_grad()
-    def compute_values(
-        self,
-        data_list: List[Dict[str, torch.Tensor]],
-        step: int
-    ) -> List[Dict[str, torch.Tensor]]:
+    def compute_values(self, data_list, step):
         self.load_model_to_gpu()
         minibatches = self.scatter_and_pack_data_list(data_list, False)
 
@@ -52,15 +47,17 @@ class Critic(Worker):
         # No need to offload model because it will be updated soon. See `Trainer.train`.
         return self.resume_and_gather_data_list(minibatches)
 
-    def update(self, data_list: List[Dict[str, torch.Tensor]], step: int):
+    def update(self, data_list, step: int):
         # Model has been loaded in `compute_values`. See `Trainer.train`.
-        self.load_optimizer_to_gpu()
         batches = self.scatter_and_pack_data_list(data_list, True)
 
         self.model.train()
         metrics = defaultdict(list)
         if self.device_mesh.get_rank() == 0:
-            tbar = tqdm(total=len(batches) * len(batches[0]), desc=f"Step {step + 1}, update critic")
+            tbar = tqdm(
+                total=sum([len(batch) for batch in batches]),
+                desc=f"Step {step + 1}, update critic"
+            )
         for batch in batches:
 
             total_actions = sum_across_processes(
@@ -80,21 +77,22 @@ class Critic(Worker):
                 loss = torch.max(mse, clipped_mse).sum() / total_actions
                 clip_ratio = (mse < clipped_mse).sum() / total_actions
                 
-                loss.backward()
+                (loss * self.device_mesh.size()).backward()
 
                 metrics["critic/loss"].append(self.device_mesh.size() * len(batch) * loss.item())
                 metrics["critic/clip_ratio"].append(self.device_mesh.size() * len(batch) * clip_ratio.item())
                 if self.device_mesh.get_rank() == 0:
                     tbar.update()
 
-            grad_norm = self.model.clip_grad_norm_(self.config.max_grad_norm)
-            metrics["critic/grad_norm"].append(grad_norm.item())
-            self.optimizer.step()
-            self.optimizer.zero_grad()
+            grad_norm = clip_grad_norm_(
+                self.model.parameters(),
+                max_norm=self.config.max_grad_norm
+            )
+            metrics["critic/grad_norm"].append(grad_norm.full_tensor().item())
+            self.optimizer_step()
 
         self.log(metrics, step)
-        if (step + 1) % self.config.save_freq == 0:
-            self.save(f"{self.config.save_dir}/step{step + 1}/critic")
+        if self.config.save_freq is not None and (step + 1) % self.config.save_freq == 0:
+            self.save(step)
 
         self.offload_model_to_cpu()
-        self.offload_optimizer_to_cpu()

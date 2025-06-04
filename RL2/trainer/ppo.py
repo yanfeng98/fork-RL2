@@ -1,32 +1,19 @@
-from typing import Dict, List
 import hydra
-from omegaconf import OmegaConf
-import os
-from torch.utils.data import DistributedSampler, DataLoader
-import torch
 import torch.distributed as dist
-from transformers import AutoTokenizer
-import wandb
-from data import RLDataset
-from workers.actor import Actor
-from workers.critic import Critic
-from algs import (
+from RL2.trainer import Trainer
+from RL2.dataset import RLDataset
+from RL2.workers import Actor, Critic
+from RL2.algs import (
     compute_gae,
     compute_reinforce_adv
 )
-from utils.comm import initialize_global_process_group
+from RL2.utils.comm import initialize_global_process_group
 
 
-class Trainer:
+class PPOTrainer(Trainer):
 
     def __init__(self, config):
-
-        self.config = config
-        world_size = int(os.environ["WORLD_SIZE"])
-        self.device_mesh = dist.device_mesh.init_device_mesh(
-            "cuda",
-            mesh_shape=(world_size,)
-        )
+        super().__init__(config)
 
         if config.actor.kl.coef > 0:
             self.ref_actor = Actor(
@@ -39,41 +26,24 @@ class Trainer:
         self.sampler, self.train_dataloader = self.prepare_sampler_dataloader(True)
         _, self.test_dataloader = self.prepare_sampler_dataloader(False)
 
-        if self.device_mesh.get_rank() == 0:
-            wandb.init(
-                project=self.config.trainer.project,
-                name=self.config.trainer.experiment_name,
-                config=OmegaConf.to_container(self.config)
-            )
-
     def prepare_sampler_dataloader(self, train: bool):
 
         dataset = RLDataset(
             self.config.data.train_data_path if train else self.config.data.test_data_path,
             self.config.data.responses_per_prompt if train else 1
         )
-        sampler = DistributedSampler(
-            dataset,
-            num_replicas=self.actor.rollout_device_mesh["dp"].size(),
-            rank=self.actor.rollout_device_mesh["dp"].get_local_rank(),
-            # Sharded inference engines share identical data.
-            shuffle=train,
-            drop_last=True
-        )
-        dataloader = DataLoader(
+
+        return super().prepare_sampler_dataloader(
             dataset,
             (
                 self.config.data.prompts_per_rollout
                 if train else len(dataset)
             ) // self.actor.rollout_device_mesh["dp"].size(),
-            # if test, pack all data in a single batch
-            sampler=sampler,
-            collate_fn=dataset.collate_fn
+            train,
+            self.actor.rollout_device_mesh["dp"]
         )
-
-        return sampler, dataloader
     
-    def compute_advantages(self, data_list: List[Dict[str, torch.Tensor]]):
+    def compute_advantages(self, data_list):
 
         if self.config.adv.estimator == "gae":
             compute_gae(
@@ -84,7 +54,6 @@ class Trainer:
         elif self.config.adv.estimator == "reinforce":
             compute_reinforce_adv(
                 data_list,
-                self.config.data.responses_per_prompt,
                 self.config.adv.norm_var
             )
         else:
@@ -124,19 +93,16 @@ class Trainer:
                     for data_list in self.test_dataloader:
                         self.actor.rollout(data_list, False, step)
 
-@hydra.main(config_path="config", config_name="config", version_base=None)
+
+@hydra.main(config_path="config", config_name="ppo", version_base=None)
 def main(config):
-
-    OmegaConf.resolve(config)
-
-    if config.trainer.disable_wandb:
-        wandb.init = lambda *args, **kwargs: None
-        wandb.log = lambda *args, **kwargs: None
 
     initialize_global_process_group()
     
-    trainer = Trainer(config)
+    trainer = PPOTrainer(config)
     trainer.train()
+
+    dist.destroy_process_group()
 
 if __name__ == "__main__":
     main()

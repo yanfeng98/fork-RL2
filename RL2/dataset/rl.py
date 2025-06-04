@@ -1,13 +1,14 @@
 from typing import Tuple, Dict, List
 import json
 import copy
+import uuid
 from torch.utils.data import Dataset
 
 class RLDataset(Dataset):
     
     def __init__(self, data_path, responses_per_prompt):
 
-        with open(data_path, "r") as f:
+        with open(data_path) as f:
             self.dataset = json.load(f)
         self.responses_per_prompt = responses_per_prompt
         
@@ -17,24 +18,12 @@ class RLDataset(Dataset):
     def __getitem__(self, idx):
 
         ex = self.dataset[idx]
+        uid = str(uuid.uuid4())
         messages = ex["messages"]
         answer = ex["answer"]
-        # Check if the last message is from the assistant (indicating enforce thinking for base model)
-        # add_generation_prompt = message[-1]["role"] != "assistant"
-        
-        # prompt = self.tokenizer.apply_chat_template(
-        #     message,
-        #     add_generation_prompt=add_generation_prompt,
-        #     tokenize=False
-        # )
-        # prompt_id = self.tokenizer.encode(
-        #     prompt,
-        #     add_special_tokens=False,
-        #     max_length=self.max_length,
-        #     truncation=True
-        # )
 
         return {
+            "uid": uid,
             "messages": messages,
             "answer": answer
         }

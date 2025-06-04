@@ -104,4 +104,4 @@ def compute_score(solution_str, ground_truth, method='strict', format_score=0.1,
 
 def reward_fn(response, answer):
     """The reward function for countdown task."""
-    return compute_score(response, answer)
+    return compute_score(response[-1]["content"], answer)
