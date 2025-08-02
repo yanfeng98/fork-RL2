@@ -85,10 +85,13 @@ class Trainer:
         
         self.train_dataloader.load_state_dict(ckpt["dataloader"])
         for idx, worker in enumerate(workers):
+
             worker_ckpt = ckpt[f"worker{idx}"]
+            load_model_to_device(worker, torch.cuda.current_device())
             set_model_state_dict(
                 worker.model, worker_ckpt["model"]
             )
+            load_model_to_device(worker, "cpu")
             worker.optimizer.load_state_dict(worker_ckpt["optimizer"])
             worker.scheduler.load_state_dict(worker_ckpt["scheduler"])
 
