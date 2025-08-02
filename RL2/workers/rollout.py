@@ -222,16 +222,18 @@ class Rollout(Worker):
     def update(self, actor, step):
 
         load_model_to_device(actor, torch.cuda.current_device())
+        options = StateDictOptions(full_state_dict=False, cpu_offload=True)
+        state_dict = get_model_state_dict(
+            actor.model, options=options
+        )
+        load_model_to_device(actor, "cpu")
         torch.cuda.empty_cache()
         # or llm.resume_memory_occupation() may OOM
         if self.device_mesh["tp"].get_local_rank() == 0:
             self.llm.resume_memory_occupation()
         
-        options = StateDictOptions(full_state_dict=False, cpu_offload=False)
-        state_dict = get_model_state_dict(
-            actor.model, options=options
-        )
         for idx, (name, tensor) in enumerate(state_dict.items()):
+            tensor = tensor.to(torch.cuda.current_device())
             serialized_tensor = MultiprocessingSerializer.serialize(
                 tensor.full_tensor() if isinstance(tensor, DTensor) else tensor
             )
@@ -252,6 +254,3 @@ class Rollout(Worker):
                     flush_cache=(idx == len(state_dict) - 1)
                 )
         dist.barrier()
-
-        load_model_to_device(actor, "cpu")
-        # Offload params here, or the params cannot be loaded.
