@@ -12,6 +12,7 @@ from transformers import (
     get_cosine_schedule_with_warmup
 )
 import wandb
+from RL2.utils.offloading import load_model_to_device
 
 class Trainer:
     
@@ -56,6 +57,7 @@ class Trainer:
         )
         for idx, worker in enumerate(workers):
 
+            load_model_to_device(worker, torch.cuda.current_device())
             worker_ckpt = {
                 "model": get_model_state_dict(
                     worker.model, options=options
@@ -63,6 +65,7 @@ class Trainer:
                 "optimizer": worker.optimizer.state_dict(),
                 "scheduler": worker.scheduler.state_dict()
             }
+            load_model_to_device(worker, "cpu")
             ckpt.update({
                 f"worker{idx}": worker_ckpt
             })
