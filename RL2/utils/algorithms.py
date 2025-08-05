@@ -1,5 +1,6 @@
 import torch
 from torch.nn.utils.rnn import pad_sequence
+from RL2.utils.functions import sequence_all_reduce
 
 def compute_approx_kl(
     logps: torch.Tensor,
@@ -75,3 +76,59 @@ def compute_reinforce_adv(
 
     for ex, advantage in zip(data_list, advantages.flatten()):
         ex["advantages"] = advantage * ex["action_mask"]
+
+def compute_ppo_loss(worker, logps, minibatch, total_actions):
+    
+    ratio = torch.exp(
+        logps - minibatch.get("old_logps", logps.detach())
+    )
+    clipped_ratio = torch.clamp(
+        ratio, worker.config.clip, 1 + worker.config.clip
+    )
+    objective = minibatch["advantages"] * ratio
+    clipped_objective = minibatch["advantages"] * clipped_ratio
+    loss = - torch.min(objective, clipped_objective).sum() / total_actions
+    clip_ratio = (objective > clipped_objective).sum() / total_actions
+    
+    return loss, clip_ratio
+
+def compute_kimi_loss(worker, logps, minibatch, total_sequences):
+    
+    kwargs = {
+        "cu_seqlens": minibatch["cu_seqlens"],
+        "device_mesh": worker.device_mesh["sp"]
+    }
+    log_ratio = sequence_all_reduce(
+        logps - minibatch.get("old_logps", logps.detach()), **kwargs
+    )
+    loss = (
+        adv - worker.config.tau * log_ratio
+    ).pow(2)
+
+def compute_gspo_loss(worker, logps, minibatch, total_sequences):
+
+    kwargs = {
+        "cu_seqlens": minibatch["cu_seqlens"],
+        "device_mesh": worker.device_mesh["sp"]
+    }
+    actions = sequence_all_reduce(
+        minibatch["action_mask"], **kwargs
+    )
+    log_ratio = sequence_all_reduce(
+        logps - minibatch.get("old_logps", logps.detach()), **kwargs
+    ) / actions
+    adv = sequence_all_reduce(
+        minibatch["advantages"], **kwargs
+    ) / actions
+
+    ratio = torch.exp(log_ratio)
+    clipped_ratio = torch.clamp(
+        ratio, 1 - worker.config.clip, 1 + worker.config.clip
+    )
+    objective = adv * ratio
+    clipped_objective = adv * clipped_ratio
+    # TODO: devide by total sequences
+    loss = - torch.min(objective, clipped_objective).sum()
+    clip_ratio = (objective > clipped_objective).sum()
+
+    return loss, clip_ratio
