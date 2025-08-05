@@ -7,9 +7,6 @@ from collections import defaultdict
 import torch
 import torch.distributed as dist
 from torch.distributed.tensor import DTensor
-from torch.distributed.checkpoint.state_dict import (
-    StateDictOptions, get_model_state_dict
-)
 from sglang.srt.entrypoints.engine import Engine
 from sglang.srt.patch_torch import monkey_patch_torch_reductions
 from sglang.srt.utils import MultiprocessingSerializer
@@ -19,7 +16,6 @@ import wandb
 from RL2.workers import Worker
 from RL2.datasets import tokenize_messages
 from RL2.utils.comm import split_and_scatter_list, gather_and_concat_list
-from RL2.utils.offloading import load_model_to_device
 from RL2.utils.logging import time_logger, gather_and_log
 
 
@@ -219,14 +215,8 @@ class Rollout(Worker):
                 ], [])
         
     @time_logger("update_rollout")
-    def update(self, actor, step):
+    def update(self, state_dict, step):
 
-        load_model_to_device(actor, torch.cuda.current_device())
-        options = StateDictOptions(full_state_dict=False, cpu_offload=True)
-        state_dict = get_model_state_dict(
-            actor.model, options=options
-        )
-        load_model_to_device(actor, "cpu")
         torch.cuda.empty_cache()
         # or llm.resume_memory_occupation() may OOM
         if self.device_mesh["tp"].get_local_rank() == 0:

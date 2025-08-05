@@ -113,7 +113,7 @@ class PPOTrainer(Trainer):
                         self.compute_approx_kl(data_list, step)
                     self.compute_advantages(data_list, step)
 
-                self.actor.update(data_list, step)
+                state_dict = self.actor.update(data_list, step)
                 if self.config.adv.estimator == "gae":
                     self.critic.update(data_list, step)
                 self.save_ckpt(
@@ -123,7 +123,7 @@ class PPOTrainer(Trainer):
                     step
                 )
 
-                self.rollout.update(self.actor, step)
+                self.rollout.update(state_dict, step)
                 if step % self.config.trainer.test_freq == 0:
                     for data_list in self.test_dataloader:
                         self.rollout(data_list, False, step)

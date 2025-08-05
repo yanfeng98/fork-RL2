@@ -1,5 +1,8 @@
 from collections import defaultdict
 import torch
+from torch.distributed.checkpoint.state_dict import (
+    StateDictOptions, get_model_state_dict
+)
 from transformers import AutoModelForCausalLM
 from RL2.workers import Worker
 from RL2.utils.sequences import count_total_actions
@@ -152,5 +155,9 @@ class Actor(Worker):
 
         rank0_log(metrics, step)
 
-        if self.config.adv_estimator == "gae":
-            load_model_to_device(self, "cpu")
+        options = StateDictOptions(full_state_dict=False, cpu_offload=True)
+        state_dict = get_model_state_dict(
+            self.model, options=options
+        )
+        load_model_to_device(self, "cpu")
+        return state_dict

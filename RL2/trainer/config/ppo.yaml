@@ -24,7 +24,6 @@ actor:
   freeze_steps: 0
   offload_model: true
   offload_optimizer: true
-  adv_estimator: ${adv.estimator}
 
   kl:
     coef: 0.0
