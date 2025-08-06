@@ -77,18 +77,6 @@ def compute_reinforce_adv(
     for ex, advantage in zip(data_list, advantages.flatten()):
         ex["advantages"] = advantage * ex["action_mask"]
 
-def compute_sequence_adv(worker, minibatch):
-
-    kwargs = {
-        "cu_seqlens": minibatch["cu_seqlens"],
-        "device_mesh": worker.device_mesh["sp"]
-    }
-    return sequence_all_reduce(
-        minibatch["advantages"], **kwargs
-    ) / sequence_all_reduce(
-        minibatch["action_mask"], **kwargs
-    )
-
 def compute_ppo_loss(worker, logps, minibatch, total_actions):
     
     ratio = torch.exp(
@@ -107,11 +95,15 @@ def compute_ppo_loss(worker, logps, minibatch, total_actions):
 def compute_kimi_loss(worker, logps, minibatch, total_sequences):
     
     # https://arxiv.org/pdf/2501.12599
-    adv = compute_sequence_adv(worker, minibatch)
+    kwargs = {
+        "cu_seqlens": minibatch["cu_seqlens"],
+        "device_mesh": worker.device_mesh["sp"]
+    }
+    adv = sequence_all_reduce(
+        minibatch["eos_mask"] * minibatch["advantages"], **kwargs
+    )
     log_ratio = sequence_all_reduce(
-        logps - minibatch.get("old_logps", logps.detach()),
-        minibatch["cu_seqlens"],
-        worker.device_mesh["sp"]
+        logps - minibatch.get("old_logps", logps.detach()), **kwargs
     )
     loss = (
         adv - worker.config.tau * log_ratio
@@ -125,12 +117,14 @@ def compute_gspo_loss(worker, logps, minibatch, total_sequences):
         "cu_seqlens": minibatch["cu_seqlens"],
         "device_mesh": worker.device_mesh["sp"]
     }
+    adv = sequence_all_reduce(
+        minibatch["eos_mask"] * minibatch["advantages"], **kwargs
+    )
     log_ratio = sequence_all_reduce(
         logps - minibatch.get("old_logps", logps.detach()), **kwargs
     ) / sequence_all_reduce(
         minibatch["action_mask"], **kwargs
     )
-    adv = compute_sequence_adv(worker, minibatch)
 
     ratio = torch.exp(log_ratio)
     clipped_ratio = torch.clamp(
