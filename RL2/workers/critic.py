@@ -2,7 +2,7 @@ from collections import defaultdict
 import torch
 from transformers import AutoModelForTokenClassification
 from RL2.workers import Worker
-from RL2.utils.sequences import count_total_actions
+from RL2.utils.sequences import count_total
 from RL2.utils.ring_attn import update_params_of_ring_attn
 from RL2.utils.offloading import load_model_to_device
 from RL2.utils.logging import (
@@ -65,7 +65,7 @@ class Critic(Worker):
         metrics = defaultdict(list)
         for batch in batches:
 
-            total_actions = count_total_actions(batch, self.device_mesh)
+            total_actions = count_total(batch, "action_mask", self.device_mesh)
             metric = defaultdict(list)
             for minibatch in batch:
 

@@ -223,18 +223,18 @@ def resume_order_of_data_list(shuffled_data_list):
         data_list = data_list[:-PAD_TRAJECTORIES]
     return data_list
 
-def count_total_actions(minibatches, device_mesh):
+def count_total(minibatches, key, device_mesh):
         
-    total_actions = sum(
-        [minibatch["action_mask"].sum() for minibatch in minibatches]
+    total = sum(
+        [minibatch[key].sum() for minibatch in minibatches]
     )
-    total_actions = torch.Tensor(
-        [total_actions]
+    total = torch.Tensor(
+        [total]
     ).to(torch.cuda.current_device())
     for mesh_name in ["sp", "dp"]:
         dist.all_reduce(
-            total_actions,
+            total,
             op=dist.ReduceOp.SUM,
             group=device_mesh[mesh_name].get_group()
         )
-    return total_actions.to("cpu").item()
+    return total.to("cpu").item()

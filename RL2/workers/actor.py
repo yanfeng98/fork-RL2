@@ -5,14 +5,16 @@ from torch.distributed.checkpoint.state_dict import (
 )
 from transformers import AutoModelForCausalLM
 from RL2.workers import Worker
-from RL2.utils.sequences import count_total_actions
+from RL2.utils.sequences import count_total
 from RL2.utils.ring_attn import update_params_of_ring_attn
 from RL2.utils.functions import (
     compute_logsumexp,
     gather_action_logits,
     compute_entropy
 )
-from RL2.utils.algorithms import compute_approx_kl
+from RL2.utils.algorithms import (
+    compute_approx_kl, compute_surrogate_loss
+)
 from RL2.utils.offloading import load_model_to_device
 from RL2.utils.logging import (
     progress_bar,
@@ -107,28 +109,19 @@ class Actor(Worker):
             desc="Update actor"
         )
         metrics = defaultdict(list)
-        for update, batch in enumerate(batches):
+        for batch in batches:
             
-            total_actions = count_total_actions(batch, self.device_mesh)
+            total_actions = count_total(batch, "action_mask", self.device_mesh)
+            total_sequences = count_total(batch, "eos_mask", self.device_mesh)
             metric = defaultdict(list)
             for minibatch in batch:
 
                 logps, entropy = self.forward(minibatch, return_entropy=True)
-                ratio = torch.exp(
-                    logps - logps.detach() if update == 0 else minibatch["old_logps"]
+                surrogate_loss, clip_ratio = compute_surrogate_loss(
+                    self, logps, minibatch, total_actions, total_sequences
                 )
-                clipped_ratio = torch.clamp(
-                    ratio,
-                    1 - self.config.clip,
-                    1 + self.config.clip
-                )
-                objective = minibatch["advantages"] * ratio
-                clipped_objective = minibatch["advantages"] * clipped_ratio
-                loss = - torch.min(objective, clipped_objective).sum() / total_actions
-                clip_ratio = (objective > clipped_objective).sum() / total_actions
-
                 entropy_loss = - entropy.sum() / total_actions
-                loss = loss + self.config.entropy.coef * entropy_loss
+                loss = surrogate_loss + self.config.entropy.coef * entropy_loss
 
                 if self.config.kl.coef > 0 and self.config.kl.type == "loss":
                     kl_loss = compute_approx_kl(

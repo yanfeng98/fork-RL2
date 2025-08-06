@@ -77,6 +77,18 @@ def compute_reinforce_adv(
     for ex, advantage in zip(data_list, advantages.flatten()):
         ex["advantages"] = advantage * ex["action_mask"]
 
+def compute_sequence_adv(worker, minibatch):
+
+    kwargs = {
+        "cu_seqlens": minibatch["cu_seqlens"],
+        "device_mesh": worker.device_mesh["sp"]
+    }
+    return sequence_all_reduce(
+        minibatch["advantages"], **kwargs
+    ) / sequence_all_reduce(
+        minibatch["action_mask"], **kwargs
+    )
+
 def compute_ppo_loss(worker, logps, minibatch, total_actions):
     
     ratio = torch.exp(
@@ -94,32 +106,31 @@ def compute_ppo_loss(worker, logps, minibatch, total_actions):
 
 def compute_kimi_loss(worker, logps, minibatch, total_sequences):
     
-    kwargs = {
-        "cu_seqlens": minibatch["cu_seqlens"],
-        "device_mesh": worker.device_mesh["sp"]
-    }
+    # https://arxiv.org/pdf/2501.12599
+    adv = compute_sequence_adv(worker, minibatch)
     log_ratio = sequence_all_reduce(
-        logps - minibatch.get("old_logps", logps.detach()), **kwargs
+        logps - minibatch.get("old_logps", logps.detach()),
+        minibatch["cu_seqlens"],
+        worker.device_mesh["sp"]
     )
     loss = (
         adv - worker.config.tau * log_ratio
-    ).pow(2)
+    ).pow(2).sum() / total_sequences
+    return loss, 0.0
 
 def compute_gspo_loss(worker, logps, minibatch, total_sequences):
 
+    # https://arxiv.org/pdf/2507.18071
     kwargs = {
         "cu_seqlens": minibatch["cu_seqlens"],
         "device_mesh": worker.device_mesh["sp"]
     }
-    actions = sequence_all_reduce(
-        minibatch["action_mask"], **kwargs
-    )
     log_ratio = sequence_all_reduce(
         logps - minibatch.get("old_logps", logps.detach()), **kwargs
-    ) / actions
-    adv = sequence_all_reduce(
-        minibatch["advantages"], **kwargs
-    ) / actions
+    ) / sequence_all_reduce(
+        minibatch["action_mask"], **kwargs
+    )
+    adv = compute_sequence_adv(worker, minibatch)
 
     ratio = torch.exp(log_ratio)
     clipped_ratio = torch.clamp(
@@ -127,8 +138,19 @@ def compute_gspo_loss(worker, logps, minibatch, total_sequences):
     )
     objective = adv * ratio
     clipped_objective = adv * clipped_ratio
-    # TODO: devide by total sequences
-    loss = - torch.min(objective, clipped_objective).sum()
-    clip_ratio = (objective > clipped_objective).sum()
+    loss = - torch.min(objective, clipped_objective).sum() / total_sequences
+    clip_ratio = (objective > clipped_objective).sum() / total_sequences
 
     return loss, clip_ratio
+
+def compute_surrogate_loss(
+    worker, logps, minibatch, total_actions, total_sequences
+):
+    if worker.config.loss == "ppo":
+        return compute_ppo_loss(worker, logps, minibatch, total_actions)
+    elif worker.config.loss == "kimi":
+        return compute_kimi_loss(worker, logps, minibatch, total_sequences)
+    elif worker.config.loss == "gspo":
+        return compute_gspo_loss(worker, logps, minibatch, total_sequences)
+    else:
+        raise NotImplementedError

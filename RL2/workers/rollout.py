@@ -141,7 +141,8 @@ class Rollout(Worker):
             self.config.apply_chat_template
         )
         ex.update({
-            "rewards": torch.FloatTensor((ex["states"].shape[-1] - 1) * [0] + [reward])
+            "rewards": torch.FloatTensor((ex["states"].shape[-1] - 1) * [0] + [reward]),
+            "eos_mask": torch.LongTensor((ex["states"].shape[-1] - 1) * [0] + [1])
         })
 
         metric["n_turns"].append(turn + 1)
