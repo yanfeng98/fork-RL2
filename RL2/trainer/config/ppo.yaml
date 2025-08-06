@@ -94,7 +94,7 @@ trainer:
   load_ckpt_from_dir: null
   n_epochs: 1
   test_freq: null
-  save_dir: ckpt/${trainer.experiment_name}
+  save_dir: ckpts/${trainer.experiment_name}
   save_freq: null
   disable_wandb: false
   
