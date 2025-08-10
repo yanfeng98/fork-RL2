@@ -64,13 +64,24 @@ class Rollout(Worker):
         if "TORCHELASTIC_USE_AGENT_STORE" in os.environ.keys():
             del os.environ["TORCHELASTIC_USE_AGENT_STORE"]
         monkey_patch_torch_reductions()
-        cuda_visible_devices = self.device_mesh["tp"].size() * [None]
-        dist.all_gather_object(
-            cuda_visible_devices,
-            os.environ["LOCAL_RANK"],
-            self.device_mesh["tp"].get_group()
-        )
-        os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(cuda_visible_devices)
+        original_cuda_devices = os.environ.get("CUDA_VISIBLE_DEVICES", "")
+        if original_cuda_devices:
+            device_list = original_cuda_devices.split(",")
+            cuda_visible_devices = self.device_mesh["tp"].size() * [None]
+            dist.all_gather_object(
+                cuda_visible_devices,
+                device_list[int(os.environ["LOCAL_RANK"])],
+                self.device_mesh["tp"].get_group(),
+            )
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(cuda_visible_devices)
+        else:
+            cuda_visible_devices = self.device_mesh["tp"].size() * [None]
+            dist.all_gather_object(
+                cuda_visible_devices,
+                os.environ["LOCAL_RANK"],
+                self.device_mesh["tp"].get_group(),
+            )
+            os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(cuda_visible_devices)
 
     def prepare_environment(self):
 
