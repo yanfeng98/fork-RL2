@@ -97,10 +97,14 @@ class Actor(Worker):
     @time_logger("update_actor")
     def update(self, data_list, step: int):
         
-        if step < self.config.freeze_steps:
-            load_model_to_device(self, "cpu")
-            return
         load_model_to_device(self, torch.cuda.current_device())
+        if step < self.config.freeze_steps:
+            options = StateDictOptions(full_state_dict=False, cpu_offload=True)
+            state_dict = get_model_state_dict(
+                self.model, options=options
+            )
+            load_model_to_device(self, "cpu")
+            return state_dict
         batches = self.scatter_and_pack_data_list(data_list, True)
 
         self.model.train()
