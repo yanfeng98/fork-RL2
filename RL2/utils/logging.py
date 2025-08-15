@@ -33,13 +33,23 @@ def time_logger(name):
         return wrapper
     return decorator
 
-def gather_and_log(metrics, device_mesh, step):
+def gather_and_log(
+    metrics,
+    device_mesh,
+    step,
+    agg_mode="seq_mean"
+):
 
-    metrics = {
-        k: gather_and_concat_list(v, device_mesh)
-        for k, v in metrics.items()
-    }
-
+    if agg_mode == "token_mean":
+        metrics = {
+            k: gather_and_concat_list(v, device_mesh["sp"])
+            for k, v in metrics.items()
+        }
+    if device_mesh["sp"].get_local_rank() == 0:
+        metrics = {
+            k: gather_and_concat_list(v, device_mesh["dp"])
+            for k, v in metrics.items()
+        }
     if dist.get_rank() == 0:
         metrics = {
             k: sum(v) / (1.0 if k == "loss" else len(v))
@@ -50,13 +60,14 @@ def gather_and_log(metrics, device_mesh, step):
         ]))
         wandb.log(metrics, step=step)
 
-def gather_and_reduce(lst, device_mesh):
+def gather_and_reduce(lst, agg_mode, device_mesh):
 
-    lst = gather_and_concat_list(lst, device_mesh["sp"])
+    if agg_mode == "token_mean":
+        lst = gather_and_concat_list(lst, device_mesh["sp"])
     if device_mesh["sp"].get_local_rank() == 0:
         lst = gather_and_concat_list(lst, device_mesh["dp"])
-        if dist.get_rank() == 0:
-            return sum(lst)
+    if dist.get_rank() == 0:
+        return sum(lst)
 
 def rank0_log(metrics, step):
     

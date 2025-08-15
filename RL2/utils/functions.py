@@ -100,3 +100,41 @@ def compute_entropy(logits, logsumexp, device_mesh):
     return logsumexp - differentiable_all_reduce(
         (probs * logits).sum(-1), device_mesh
     )
+
+def aggregate_values(
+    tensor,
+    minibatch,
+    agg_mode,
+    total_actions,
+    total_sequences,
+    device_mesh
+):
+    
+    if isinstance(tensor, tuple):
+        return tuple(
+            aggregate_values(
+                t,
+                minibatch,
+                agg_mode,
+                total_actions,
+                total_sequences,
+                device_mesh
+            )
+            for t in tensor
+        )
+
+    if agg_mode == "token_mean":
+        return tensor.sum() / total_actions
+    elif agg_mode == "seq_mean":
+        tensor = sequence_all_reduce(
+            tensor,
+            minibatch["cu_seqlens"],
+            device_mesh
+        ) / sequence_all_reduce(
+            minibatch["action_mask"],
+            minibatch["cu_seqlens"],
+            device_mesh
+        )
+        return tensor.sum() / total_sequences
+    else:
+        raise NotImplementedError

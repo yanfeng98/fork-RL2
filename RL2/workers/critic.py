@@ -4,6 +4,7 @@ from transformers import AutoModelForTokenClassification
 from RL2.workers import Worker
 from RL2.utils.sequences import count_total
 from RL2.utils.ring_attn import update_params_of_ring_attn
+from RL2.utils.functions import aggregate_values
 from RL2.utils.offloading import load_model_to_device
 from RL2.utils.logging import (
     progress_bar,
@@ -65,7 +66,12 @@ class Critic(Worker):
         metrics = defaultdict(list)
         for batch in batches:
 
-            total_actions = count_total(batch, "action_mask", self.device_mesh)
+            total_actions = count_total(
+                batch, "action_mask", self.device_mesh
+            )
+            total_sequences = count_total(
+                batch, "eos_mask", self.device_mesh
+            )
             metric = defaultdict(list)
             for minibatch in batch:
 
@@ -77,9 +83,18 @@ class Critic(Worker):
                 )
                 mse = (values - minibatch["returns"]).pow(2)
                 clipped_mse = (clipped_values - minibatch["returns"]).pow(2)
-                loss = torch.max(mse, clipped_mse).sum() / total_actions
-                clip_ratio = (mse < clipped_mse).sum() / total_actions
-                
+                losses = torch.max(mse, clipped_mse)
+                clip_ratios = (mse < clipped_mse)
+
+                loss, clip_ratio = aggregate_values(
+                    (losses, clip_ratios),
+                    minibatch,
+                    self.config.agg_mode,
+                    total_actions,
+                    total_sequences,
+                    self.device_mesh["sp"]
+                )
+
                 self.backward(loss)
 
                 tbar.update()
@@ -90,7 +105,9 @@ class Critic(Worker):
             
             for k, v in metric.items():
                 metrics[k].append(
-                    gather_and_reduce(v, self.device_mesh)
+                    gather_and_reduce(
+                        v, self.config.agg_mode, self.device_mesh
+                    )
                 )
             metrics["critic/grad_norm"].append(grad_norm)
 

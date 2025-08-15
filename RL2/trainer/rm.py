@@ -51,7 +51,7 @@ class RMTrainer(Trainer):
 
         grad_norm = self.critic.optimizer_step()
         metrics["grad_norm"].append(grad_norm)
-        gather_and_log(metrics, self.critic.device_mesh["dp"], step)
+        gather_and_log(metrics, self.critic.device_mesh, step)
 
     def train(self):
 

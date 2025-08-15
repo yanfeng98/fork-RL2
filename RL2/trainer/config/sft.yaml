@@ -12,6 +12,7 @@ actor:
   tp_size: 1
   sp_size: 1
   max_length_per_device: null
+  agg_mode: token_mean
   lr: 5e-6
   weight_decay: 1e-2
   max_grad_norm: 1.0

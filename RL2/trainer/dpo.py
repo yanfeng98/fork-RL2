@@ -56,7 +56,7 @@ class DPOTrainer(Trainer):
 
         grad_norm = self.actor.optimizer_step()
         metrics["grad_norm"].append(grad_norm)
-        gather_and_log(metrics, self.actor.device_mesh["dp"], step)
+        gather_and_log(metrics, self.actor.device_mesh, step)
 
     def train(self):
 

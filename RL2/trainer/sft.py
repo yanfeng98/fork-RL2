@@ -5,7 +5,8 @@ from tqdm import tqdm
 from RL2.trainer import Trainer
 from RL2.datasets import SFTDataset, get_dataloader
 from RL2.workers import Actor
-from RL2.utils.functions import sequence_all_reduce
+from RL2.utils.sequences import count_total
+from RL2.utils.functions import aggregate_values
 from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.logging import (
     progress_bar,
@@ -32,25 +33,33 @@ class SFTTrainer(Trainer):
     def update_actor(self, data_list, step):
 
         minibatches = self.actor.scatter_and_pack_data_list(data_list)
+        total_actions = count_total(
+            minibatches, "action_mask", self.actor.device_mesh
+        )
         metrics = defaultdict(list)
         for minibatch in progress_bar(
             minibatches, desc="Update actor"
         ):
             logps = self.actor.forward(minibatch)
-            logps = sequence_all_reduce(
-                logps, minibatch["cu_seqlens"], self.actor.device_mesh["sp"]
-            ) / sequence_all_reduce(
-                minibatch["action_mask"],
-                minibatch["cu_seqlens"],
+            loss = aggregate_values(
+                - logps,
+                minibatch,
+                self.actor.config.agg_mode,
+                total_actions,
+                self.config.data.batch_size,
                 self.actor.device_mesh["sp"]
             )
-            loss = - logps.sum() / self.config.data.batch_size
             self.actor.backward(loss)
             metrics["loss"].append(loss.item())
 
         grad_norm = self.actor.optimizer_step()
         metrics["grad_norm"].append(grad_norm)
-        gather_and_log(metrics, self.actor.device_mesh["dp"], step)
+        gather_and_log(
+            metrics,
+            self.actor.device_mesh,
+            step,
+            self.actor.config.agg_mode
+        )
 
     def train(self):
 

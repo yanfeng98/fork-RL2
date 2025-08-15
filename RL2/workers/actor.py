@@ -10,7 +10,8 @@ from RL2.utils.ring_attn import update_params_of_ring_attn
 from RL2.utils.functions import (
     compute_logsumexp,
     gather_action_logits,
-    compute_entropy
+    compute_entropy,
+    aggregate_values
 )
 from RL2.utils.algorithms import compute_approx_kl
 from RL2.utils.offloading import load_model_to_device
@@ -113,12 +114,18 @@ class Actor(Worker):
         metrics = defaultdict(list)
         for batch in batches:
             
-            total_actions = count_total(batch, "action_mask", self.device_mesh)
-            total_sequences = count_total(batch, "eos_mask", self.device_mesh)
+            total_actions = count_total(
+                batch, "action_mask", self.device_mesh
+            )
+            total_sequences = count_total(
+                batch, "eos_mask", self.device_mesh
+            )
             metric = defaultdict(list)
             for minibatch in batch:
 
-                logps, entropy = self.forward(minibatch, return_entropy=True)
+                logps, entropy = self.forward(
+                    minibatch, return_entropy=True
+                )
                 ratio = torch.exp(
                     logps - minibatch.get("old_logps", logps.detach())
                 )
@@ -127,11 +134,19 @@ class Actor(Worker):
                 )
                 objective = minibatch["advantages"] * ratio
                 clipped_objective = minibatch["advantages"] * clipped_ratio
-                loss = - torch.min(objective, clipped_objective).sum() / total_actions
-                clip_ratio = (objective > clipped_objective).sum() / total_actions
-                entropy_loss = - entropy.sum() / total_actions
-                loss = loss + self.config.entropy.coef * entropy_loss
+                losses = - torch.min(objective, clipped_objective)
+                clip_ratios = objective > clipped_objective
 
+                loss, clip_ratio, entropy = aggregate_values(
+                    (losses, clip_ratios, entropy),
+                    minibatch,
+                    self.config.agg_mode,
+                    total_actions,
+                    total_sequences,
+                    self.device_mesh["sp"]
+                )
+
+                loss = loss - self.config.entropy.coef * entropy
                 if self.config.kl.coef > 0 and self.config.kl.type == "loss":
                     kl_loss = compute_approx_kl(
                         logps,
@@ -143,7 +158,7 @@ class Actor(Worker):
                 self.backward(loss)
 
                 tbar.update()
-                metric["actor/entropy_loss"].append(entropy_loss.item())
+                metric["actor/entropy"].append(entropy.item())
                 metric["actor/loss"].append(loss.item())
                 metric["actor/clip_ratio"].append(clip_ratio.item())
 
@@ -151,7 +166,9 @@ class Actor(Worker):
 
             for k, v in metric.items():
                 metrics[k].append(
-                    gather_and_reduce(v, self.device_mesh)
+                    gather_and_reduce(
+                        v, self.config.agg_mode, self.device_mesh
+                    )
                 )
             metrics["actor/grad_norm"].append(grad_norm)
 
