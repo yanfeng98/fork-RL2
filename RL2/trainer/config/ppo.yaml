@@ -22,7 +22,7 @@ actor:
   weight_decay: 1e-2
   max_grad_norm: 1.0
   scheduler: constant
-  warmup_ratio: 0.0
+  warmup_ratio: 0.1
   freeze_steps: 0
   offload_model: true
   offload_optimizer: true
