@@ -130,10 +130,12 @@ def aggregate_values(
             tensor,
             minibatch["cu_seqlens"],
             device_mesh
-        ) / sequence_all_reduce(
-            minibatch["action_mask"],
-            minibatch["cu_seqlens"],
-            device_mesh
+        ) / (
+            sequence_all_reduce(
+                minibatch["action_mask"],
+                minibatch["cu_seqlens"],
+                device_mesh
+            ) + torch.finfo(tensor.dtype).eps
         )
         return tensor.sum() / total_sequences
     else:
