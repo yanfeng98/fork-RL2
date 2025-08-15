@@ -1,5 +1,9 @@
 import functools
 import torch
+from torch.distributed.checkpoint.state_dict import (
+    StateDictOptions,
+    get_model_state_dict
+)
 from torch.distributed.tensor.placement_types import Shard
 from torch.distributed.tensor.parallel import (
     ColwiseParallel,
@@ -21,6 +25,14 @@ from transformers import (
     Qwen3ForCausalLM,
     Qwen3ForTokenClassification
 )
+
+def get_state_dict(model, full_state_dict: bool):
+
+    options = StateDictOptions(
+        full_state_dict=full_state_dict,
+        cpu_offload=True
+    )
+    return get_model_state_dict(model, options=options)
 
 def prepare_llama_tp_layer(layer, device_mesh):
 

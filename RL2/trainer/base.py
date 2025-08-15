@@ -3,16 +3,13 @@ import glob
 import torch
 import torch.distributed as dist
 import torch.distributed.checkpoint as dcp
-from torch.distributed.checkpoint.state_dict import (
-    StateDictOptions,
-    get_model_state_dict,
-    set_model_state_dict
-)
+from torch.distributed.checkpoint.state_dict import set_model_state_dict
 from transformers import (
     AutoModelForSequenceClassification,
     get_scheduler
 )
 import wandb
+from RL2.utils.models import get_state_dict
 from RL2.utils.offloading import load_model_to_device
 
 class Trainer:
@@ -54,23 +51,17 @@ class Trainer:
             "dataloader": self.train_dataloader.state_dict()
         }
 
-        options = StateDictOptions(
-            full_state_dict=False, cpu_offload=True
-        )
         for idx, worker in enumerate(workers):
 
             load_model_to_device(worker, torch.cuda.current_device())
-            worker_ckpt = {
-                "model": get_model_state_dict(
-                    worker.model, options=options
+            ckpt[f"worker{idx}"] = {
+                "model": get_state_dict(
+                    worker.model, full_state_dict=False
                 ),
                 "optimizer": worker.optimizer.state_dict(),
                 "scheduler": worker.scheduler.state_dict()
             }
             load_model_to_device(worker, "cpu")
-            ckpt.update({
-                f"worker{idx}": worker_ckpt
-            })
 
         return ckpt
     
@@ -83,7 +74,9 @@ class Trainer:
         checkpoint_id = self.config.trainer.load_ckpt_from
         if checkpoint_id == "latest":
             save_dirs = glob.glob(f"{self.config.trainer.save_dir}/step*")
-            checkpoint_id = max(save_dirs, key=lambda dir: int(dir.split("/step")[-1]))
+            checkpoint_id = max(
+                save_dirs, key=lambda dir: int(dir.split("/step")[-1])
+            )
         
         dcp.load(ckpt, checkpoint_id)
         self.train_dataloader.load_state_dict(ckpt["dataloader"])
@@ -115,11 +108,8 @@ class Trainer:
         save_dir = self.config.trainer.save_dir
         if self.config.trainer.save_freq is not None:
             save_dir += "/latest"
-        options = StateDictOptions(
-            full_state_dict=True, cpu_offload=True
-        )
-        state_dict = get_model_state_dict(
-            worker.model, options=options
+        state_dict = get_state_dict(
+            worker.model, full_state_dict=True
         )
         if dist.get_rank() == 0:
 

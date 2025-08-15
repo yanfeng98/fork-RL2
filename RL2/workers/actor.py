@@ -1,10 +1,8 @@
 from collections import defaultdict
 import torch
-from torch.distributed.checkpoint.state_dict import (
-    StateDictOptions, get_model_state_dict
-)
 from transformers import AutoModelForCausalLM
 from RL2.workers import Worker
+from RL2.utils.models import get_state_dict
 from RL2.utils.sequences import count_total
 from RL2.utils.ring_attn import update_params_of_ring_attn
 from RL2.utils.functions import (
@@ -98,9 +96,8 @@ class Actor(Worker):
         
         load_model_to_device(self, torch.cuda.current_device())
         if step < self.config.freeze_steps:
-            options = StateDictOptions(full_state_dict=False, cpu_offload=True)
-            state_dict = get_model_state_dict(
-                self.model, options=options
+            state_dict = get_state_dict(
+                self.model, full_state_dict=False
             )
             load_model_to_device(self, "cpu")
             return state_dict
@@ -174,9 +171,8 @@ class Actor(Worker):
 
         rank0_log(metrics, step)
 
-        options = StateDictOptions(full_state_dict=False, cpu_offload=True)
-        state_dict = get_model_state_dict(
-            self.model, options=options
+        state_dict = get_state_dict(
+            self.model, full_state_dict=False
         )
         load_model_to_device(self, "cpu")
         return state_dict
