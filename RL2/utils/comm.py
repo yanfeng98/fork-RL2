@@ -12,60 +12,32 @@ def initialize_global_process_group(timeout_second=36000):
     if dist.is_initialized():
         torch.cuda.set_device(local_rank)
 
-def split_and_scatter_list(lst, device_mesh=None):
+def split_and_scatter_list(lst, device_mesh):
 
-    if device_mesh is None:
-        world_size = dist.get_world_size()
-        is_src = dist.get_rank() == 0
-        src = 0
-        group = None
-        group_src = None
-    else:
-        world_size = device_mesh.size()
-        is_src = device_mesh.get_local_rank() == 0
-        src = None
-        group = device_mesh.get_group()
-        group_src = 0
-
-    if is_src:
-        data_per_dp = math.ceil(len(lst) / world_size)
+    if device_mesh.get_local_rank() == 0:
+        data_per_dp = math.ceil(len(lst) / device_mesh.size())
     lists = [
         lst[rank * data_per_dp:(rank + 1) * data_per_dp]
-        if is_src else None
-        for rank in range(world_size)
+        if device_mesh.get_local_rank() == 0 else None
+        for rank in range(device_mesh.size())
     ]
     lst = [None]
     dist.scatter_object_list(
         lst,
         lists,
-        src=src,
-        group=group,
-        group_src=group_src
+        group=device_mesh.get_group(),
+        group_src=0
     )
     return lst[0]
 
-def gather_and_concat_list(lst, device_mesh=None):
+def gather_and_concat_list(lst, device_mesh):
 
-    if device_mesh is None:
-        world_size = dist.get_world_size()
-        is_dst = dist.get_rank() == 0
-        dst = 0
-        group = None
-        group_dst = None
-    else:
-        world_size = device_mesh.size()
-        is_dst = device_mesh.get_local_rank() == 0
-        dst = None
-        group = device_mesh.get_group()
-        group_dst = 0
-    
-    lists = [None] * world_size if is_dst else None
+    lists = [None] * device_mesh.size() if device_mesh.get_local_rank() == 0 else None
     dist.gather_object(
         lst,
         lists,
-        dst=dst,
-        group=group,
-        group_dst=group_dst
+        group=device_mesh.get_group(),
+        group_dst=0
     )
 
-    return sum(lists, []) if is_dst else None
+    return sum(lists, []) if device_mesh.get_local_rank() == 0 else None
