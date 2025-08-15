@@ -10,7 +10,7 @@ from torch.distributed.checkpoint.state_dict import (
 )
 from transformers import (
     AutoModelForSequenceClassification,
-    get_cosine_schedule_with_warmup
+    get_scheduler
 )
 import wandb
 from RL2.utils.offloading import load_model_to_device
@@ -39,8 +39,9 @@ class Trainer:
             worker.config, "update_per_rollout", 1
         )
         num_warmup_steps = int(worker.config.warmup_ratio * num_training_steps)
-        # TODO: support const lr
-        return get_cosine_schedule_with_warmup(
+
+        return get_scheduler(
+            worker.config.scheduler,
             worker.optimizer,
             num_warmup_steps=num_warmup_steps,
             num_training_steps=num_training_steps
