@@ -36,7 +36,8 @@ class PPOTrainer(Trainer):
         dataset = RLDataset(
             self.config.data.train_data_path
             if train else self.config.data.test_data_path,
-            self.config.data.responses_per_prompt if train else 1
+            self.config.data.responses_per_prompt
+            if train else 1
         )
 
         return get_dataloader(
@@ -76,6 +77,7 @@ class PPOTrainer(Trainer):
             compute_reinforce_adv(
                 data_list,
                 self.config.data.responses_per_prompt,
+                self.config.adv.global_norm,
                 self.config.adv.norm_var
             )
         else: 

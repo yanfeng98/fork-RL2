@@ -1,6 +1,5 @@
 import torch
 from torch.nn.utils.rnn import pad_sequence
-from RL2.utils.functions import sequence_all_reduce
 
 def compute_approx_kl(
     logps: torch.Tensor,
@@ -35,7 +34,13 @@ def compute_gae(data_list, gamma, lamda):
     action_mask = pad_sequence(action_mask, True)
     
     # \delta_t = r_t + \gamma * V(s_{t+1}) - V(s_t)
-    next_values = torch.cat((values[:, 1:], torch.zeros((values.shape[0], 1))), -1)
+    next_values = torch.cat(
+        (
+            values[:, 1:],
+            torch.zeros((values.shape[0], 1))
+        ),
+        -1
+    )
     deltas = rewards + gamma * next_values - values
 
     # A_t = \delta_t + \gamma * \lambda * A_{t+1}
@@ -59,19 +64,27 @@ def compute_gae(data_list, gamma, lamda):
         ex["returns"][indices] = ret[:len(indices)]
 
 def compute_reinforce_adv(
-    data_list, responses_per_prompt, norm_var: bool
+    data_list,
+    responses_per_prompt,
+    global_norm: bool,
+    norm_var: bool
 ):
     
     rewards = torch.FloatTensor(
         [ex["rewards"].sum() for ex in data_list]
     ).view(-1, responses_per_prompt)
-    baseline = rewards.mean(-1)
-    advantages = rewards - baseline.unsqueeze(-1)
 
+    if global_norm:
+        baseline = rewards.mean()
+        std = rewards.std()
+    else:
+        baseline = rewards.mean(-1).unsqueeze(-1)
+        std = rewards.std(-1).unsqueeze(-1)
+
+    advantages = rewards - baseline
     if norm_var:
-        stds = rewards.std(-1)
         advantages /= (
-            stds.unsqueeze(-1) + torch.finfo(advantages.dtype).eps
+            std + torch.finfo(advantages.dtype).eps
         )
 
     for ex, advantage in zip(data_list, advantages.flatten()):
