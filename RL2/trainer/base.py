@@ -1,4 +1,5 @@
 from omegaconf import OmegaConf
+import glob
 import torch
 import torch.distributed as dist
 import torch.distributed.checkpoint as dcp
@@ -74,15 +75,16 @@ class Trainer:
     
     def load_ckpt(self, workers):
 
-        if self.config.trainer.load_ckpt_from_dir is None:
+        if self.config.trainer.load_ckpt_from is None:
             return 0
 
         ckpt = self.get_ckpt(workers, 0)
-        dcp.load(
-            ckpt,
-            checkpoint_id=self.config.trainer.load_ckpt_from_dir
-        )
+        checkpoint_id = self.config.trainer.load_ckpt_from
+        if checkpoint_id == "latest":
+            save_dirs = glob.glob(f"{self.config.trainer.save_dir}/step*")
+            checkpoint_id = max(save_dirs, key=lambda dir: int(dir.split("/step")[-1]))
         
+        dcp.load(ckpt, checkpoint_id)
         self.train_dataloader.load_state_dict(ckpt["dataloader"])
         for idx, worker in enumerate(workers):
 
@@ -109,7 +111,9 @@ class Trainer:
 
     def save_model(self, worker, rm=False):
 
-        save_dir = f"{self.config.trainer.save_dir}/latest"
+        save_dir = self.config.trainer.save_dir
+        if self.config.trainer.save_freq is not None:
+            save_dir += "/latest"
         options = StateDictOptions(
             full_state_dict=True, cpu_offload=True
         )

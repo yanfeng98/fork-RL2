@@ -32,7 +32,7 @@ ref_actor:
 trainer:
   project: null
   experiment_name: null
-  load_ckpt_from_dir: null
+  load_ckpt_from: null
   n_epochs: 1
   save_dir: ckpts/${trainer.experiment_name}
   save_freq: null
