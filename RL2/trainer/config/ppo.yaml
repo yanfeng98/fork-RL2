@@ -97,5 +97,5 @@ trainer:
   test_freq: null
   save_dir: ckpts/${trainer.experiment_name}
   save_freq: null
-  disable_wandb: false
+  use_wandb: true
   

@@ -24,4 +24,4 @@ trainer:
   n_epochs: 1
   save_dir: ckpts/${trainer.experiment_name}
   save_freq: null
-  disable_wandb: false
+  use_wandb: true

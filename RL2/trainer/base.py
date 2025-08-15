@@ -24,7 +24,7 @@ class Trainer:
 
         if dist.get_rank() == 0:
             print(OmegaConf.to_yaml(config))
-            if not config.trainer.disable_wandb:
+            if config.trainer.use_wandb:
                 wandb.init(
                     project=config.trainer.project,
                     name=config.trainer.experiment_name,
@@ -39,7 +39,7 @@ class Trainer:
             worker.config, "update_per_rollout", 1
         )
         num_warmup_steps = int(worker.config.warmup_ratio * num_training_steps)
-
+        # TODO: support const lr
         return get_cosine_schedule_with_warmup(
             worker.optimizer,
             num_warmup_steps=num_warmup_steps,
