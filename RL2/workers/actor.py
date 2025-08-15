@@ -12,9 +12,7 @@ from RL2.utils.functions import (
     gather_action_logits,
     compute_entropy
 )
-from RL2.utils.algorithms import (
-    compute_approx_kl, compute_surrogate_loss
-)
+from RL2.utils.algorithms import compute_approx_kl
 from RL2.utils.offloading import load_model_to_device
 from RL2.utils.logging import (
     progress_bar,
@@ -121,11 +119,18 @@ class Actor(Worker):
             for minibatch in batch:
 
                 logps, entropy = self.forward(minibatch, return_entropy=True)
-                surrogate_loss, clip_ratio = compute_surrogate_loss(
-                    self, logps, minibatch, total_actions, total_sequences
+                ratio = torch.exp(
+                    logps - minibatch.get("old_logps", logps.detach())
                 )
+                clipped_ratio = torch.clamp(
+                    ratio, 1 - self.config.clip, 1 + self.config.clip
+                )
+                objective = minibatch["advantages"] * ratio
+                clipped_objective = minibatch["advantages"] * clipped_ratio
+                loss = - torch.min(objective, clipped_objective).sum() / total_actions
+                clip_ratio = (objective > clipped_objective).sum() / total_actions
                 entropy_loss = - entropy.sum() / total_actions
-                loss = surrogate_loss + self.config.entropy.coef * entropy_loss
+                loss = loss + self.config.entropy.coef * entropy_loss
 
                 if self.config.kl.coef > 0 and self.config.kl.type == "loss":
                     kl_loss = compute_approx_kl(
