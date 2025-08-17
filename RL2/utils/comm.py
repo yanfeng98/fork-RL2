@@ -15,9 +15,9 @@ def initialize_global_process_group(timeout_second=36000):
 def split_and_scatter_list(lst, device_mesh):
 
     if device_mesh.get_local_rank() == 0:
-        data_per_dp = math.ceil(len(lst) / device_mesh.size())
+        length_per_dp = math.ceil(len(lst) / device_mesh.size())
     lists = [
-        lst[rank * data_per_dp:(rank + 1) * data_per_dp]
+        lst[rank * length_per_dp:(rank + 1) * length_per_dp]
         if device_mesh.get_local_rank() == 0 else None
         for rank in range(device_mesh.size())
     ]
@@ -30,14 +30,34 @@ def split_and_scatter_list(lst, device_mesh):
     )
     return lst[0]
 
+def boardcast_list(lst, device_mesh):
+
+    kwargs = {
+        "group": device_mesh.get_group(),
+        "group_src": 0
+    }
+    length = torch.LongTensor([
+        len(lst)
+        if device_mesh.get_local_rank() == 0
+        else 0
+    ]).to(torch.cuda.current_device())
+    dist.boardcast(length, **kwargs)
+    if device_mesh.get_local_rank() != 0:
+        lst = length.item() * [None]
+    dist.boardcast_object_list(lst, **kwargs)
+    return lst
+
 def gather_and_concat_list(lst, device_mesh):
 
-    lists = [None] * device_mesh.size() if device_mesh.get_local_rank() == 0 else None
+    lists = (
+        device_mesh.size() * [None]
+        if device_mesh.get_local_rank() == 0
+        else None
+    )
     dist.gather_object(
         lst,
         lists,
         group=device_mesh.get_group(),
         group_dst=0
     )
-
     return sum(lists, []) if device_mesh.get_local_rank() == 0 else None
