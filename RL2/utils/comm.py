@@ -41,10 +41,10 @@ def boardcast_list(lst, device_mesh):
         if device_mesh.get_local_rank() == 0
         else 0
     ]).to(torch.cuda.current_device())
-    dist.boardcast(length, **kwargs)
+    dist.broadcast(length, **kwargs)
     if device_mesh.get_local_rank() != 0:
         lst = length.item() * [None]
-    dist.boardcast_object_list(lst, **kwargs)
+    dist.broadcast_object_list(lst, **kwargs)
     return lst
 
 def gather_and_concat_list(lst, device_mesh):
