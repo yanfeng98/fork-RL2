@@ -34,13 +34,10 @@ def compute_gae(data_list, gamma, lamda):
     action_mask = pad_sequence(action_mask, True)
     
     # \delta_t = r_t + \gamma * V(s_{t+1}) - V(s_t)
-    next_values = torch.cat(
-        (
-            values[:, 1:],
-            torch.zeros((values.shape[0], 1))
-        ),
-        -1
-    )
+    next_values = torch.cat((
+        values[:, 1:],
+        torch.zeros((values.shape[0], 1))
+    ), -1)
     deltas = rewards + gamma * next_values - values
 
     # A_t = \delta_t + \gamma * \lambda * A_{t+1}

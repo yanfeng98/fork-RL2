@@ -7,6 +7,7 @@ from RL2.trainer import Trainer
 from RL2.datasets import DPODataset, get_dataloader
 from RL2.workers import Actor
 from RL2.utils.functions import aggregate_values
+from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.logging import (
     progress_bar,
@@ -60,7 +61,7 @@ class DPOTrainer(Trainer):
 
     def train(self):
 
-        step = self.load_ckpt((self.actor,))
+        step = load_ckpt(self, (self.actor,))
         for epoch in range(
             step // len(self.train_dataloader), self.config.trainer.n_epochs
         ):
@@ -73,8 +74,8 @@ class DPOTrainer(Trainer):
                 step += 1
                 data_list = self.ref_actor.compute_logps(data_list, step)
                 self.update_actor(data_list, step)
-                self.save_ckpt((self.actor,), step)
-        self.save_model(self.actor)
+                save_ckpt(self, (self.actor,), step)
+        save_model(self, self.actor)
 
 
 @hydra.main(config_path="config", config_name="dpo", version_base=None)

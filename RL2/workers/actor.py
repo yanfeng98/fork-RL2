@@ -2,7 +2,6 @@ from collections import defaultdict
 import torch
 from transformers import AutoModelForCausalLM
 from RL2.workers import Worker
-from RL2.utils.models import get_state_dict
 from RL2.utils.sequences import count_total
 from RL2.utils.ring_attn import ring_attn_manager
 from RL2.utils.functions import (
@@ -12,6 +11,7 @@ from RL2.utils.functions import (
     aggregate_values
 )
 from RL2.utils.algorithms import compute_approx_kl
+from RL2.utils.checkpointing import get_state_dict
 from RL2.utils.offloading import load_model_to_device
 from RL2.utils.logging import (
     progress_bar,

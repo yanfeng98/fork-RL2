@@ -7,6 +7,7 @@ from RL2.datasets import SFTDataset, get_dataloader
 from RL2.workers import Actor
 from RL2.utils.sequences import count_total
 from RL2.utils.functions import aggregate_values
+from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.logging import (
     progress_bar,
@@ -57,7 +58,7 @@ class SFTTrainer(Trainer):
 
     def train(self):
 
-        step = self.load_ckpt((self.actor,))
+        step = load_ckpt(self, (self.actor,))
         for epoch in range(
             step // len(self.train_dataloader), self.config.trainer.n_epochs
         ):
@@ -69,8 +70,8 @@ class SFTTrainer(Trainer):
             ):
                 step += 1
                 self.update_actor(data_list, step)
-                self.save_ckpt((self.actor,), step)
-        self.save_model(self.actor)
+                save_ckpt(self, (self.actor,), step)
+        save_model(self, self.actor)
 
 
 @hydra.main(config_path="config", config_name="sft", version_base=None)

@@ -10,6 +10,7 @@ from RL2.utils.algorithms import (
     compute_gae,
     compute_reinforce_adv
 )
+from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.logging import time_logger
 
@@ -85,7 +86,8 @@ class PPOTrainer(Trainer):
             
     def train(self):
 
-        step = self.load_ckpt(
+        step = load_ckpt(
+            self,
             (self.actor, self.critic)
             if self.config.adv.estimator == "gae"
             else (self.actor,)
@@ -118,7 +120,8 @@ class PPOTrainer(Trainer):
                 state_dict = self.actor.update(data_list, step)
                 if self.config.adv.estimator == "gae":
                     self.critic.update(data_list, step)
-                self.save_ckpt(
+                save_ckpt(
+                    self,
                     (self.actor, self.critic)
                     if self.config.adv.estimator == "gae"
                     else (self.actor,),
@@ -130,7 +133,7 @@ class PPOTrainer(Trainer):
                     for data_list in self.test_dataloader:
                         self.rollout(data_list, False, step)
 
-        self.save_model(self.actor)
+        save_model(self, self.actor)
 
 
 @hydra.main(config_path="config", config_name="ppo", version_base=None)
