@@ -101,7 +101,12 @@ def pad_tokens_and_unsqueeze(minibatch, cu_seqlens, multiple_of):
         pad_tokens = multiple_of - len(minibatch["states"]) % multiple_of
         minibatch = {
             k: torch.cat((
-                v, torch.zeros((pad_tokens), dtype=v.dtype)
+                v,
+                torch.zeros(
+                    (pad_tokens),
+                    dtype=v.dtype,
+                    device=v.device
+                )
             ))
             for k, v in minibatch.items()
         }
@@ -109,17 +114,17 @@ def pad_tokens_and_unsqueeze(minibatch, cu_seqlens, multiple_of):
             cu_seqlens,
             torch.tensor(
                 minibatch["position_ids"].size(),
-                dtype=torch.int32
+                dtype=torch.int32,
+                device=cu_seqlens.device
             )
         ))
     else:
         pad_tokens = 0
         
     minibatch = {
-        k: v.unsqueeze(0).to(torch.cuda.current_device())
+        k: v.unsqueeze(0)
         for k, v in minibatch.items()
     }
-    cu_seqlens = cu_seqlens.to(torch.cuda.current_device())
 
     return minibatch, cu_seqlens, pad_tokens
 

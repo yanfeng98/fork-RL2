@@ -124,12 +124,19 @@ class Worker:
                 else None,
                 self.device_mesh["sp"]
             )
-        return boardcast_list(
+        minibatches = boardcast_list(
             minibatches
             if self.device_mesh["tp"].get_local_rank() == 0
             else None,
             self.device_mesh["tp"]
         )
+        return [
+            {
+                k: v.to(torch.cuda.current_device())
+                for k, v in minibatch.items()
+            }
+            for minibatch in minibatches
+        ]
 
     def unpack_and_gather_tensor_dicts(self, minibatches):
         

@@ -109,10 +109,18 @@ def pack_tensor_dicts_to_minibatches(
 
 def position_ids_to_cu_seqlens(position_ids):
 
-    indices = torch.arange(len(position_ids), dtype=torch.int32)
+    indices = torch.arange(
+        len(position_ids),
+        dtype=torch.int32,
+        device=position_ids.device
+    )
     return torch.cat((
         indices[position_ids == 0],
-        torch.tensor(position_ids.size(), dtype=torch.int32)
+        torch.tensor(
+            position_ids.size(),
+            dtype=torch.int32,
+            device=position_ids.device
+        )
     ))
 
 def split_minibatches_into_tensor_dicts(minibatches):
