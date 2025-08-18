@@ -113,9 +113,9 @@ def aggregate_values(
             for t in tensor
         )
 
-    if agg_mode == "token_mean":
+    if agg_mode == "all_token_mean":
         return tensor.sum() / total_actions
-    elif agg_mode == "token_sum":
+    elif agg_mode == "seq_token_sum":
         cu_seqlens = position_ids_to_cu_seqlens(
             minibatch["position_ids"]
         )
@@ -125,17 +125,17 @@ def aggregate_values(
                 cu_seqlens[:-1], cu_seqlens[1:]
             )
         ])
-    elif agg_mode == "seq_mean":
+    elif agg_mode == "seq_mean_seq_token_mean":
         return (
             aggregate_values(
                 tensor,
                 minibatch,
-                "token_sum"
+                "seq_token_sum"
             ) / (
                 aggregate_values(
                     minibatch["action_mask"],
                     minibatch,
-                    "token_sum"
+                    "seq_token_sum"
                 ) + torch.finfo(tensor.dtype).eps
             )
         ).sum() / total_sequences

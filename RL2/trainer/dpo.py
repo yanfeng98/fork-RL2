@@ -43,7 +43,7 @@ class DPOTrainer(Trainer):
             chosen_rewards, rejected_rewards = aggregate_values(
                 self.config.actor.beta * (logps - minibatch["ref_logps"]),
                 minibatch,
-                "token_sum"
+                "seq_token_sum"
             ).view(-1, 2).T
             reward_margins = chosen_rewards - rejected_rewards
             loss = - F.logsigmoid(reward_margins).sum() / self.config.data.batch_size
