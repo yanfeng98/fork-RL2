@@ -3,14 +3,14 @@ import os
 import functools
 import torch
 import torch.distributed as dist
+import transformers
+from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from transformers.modeling_flash_attention_utils import (
     _flash_supports_window_size,
     is_flash_attn_greater_or_equal
 )
-import transformers
 from ring_flash_attn.zigzag_ring_flash_attn_varlen import zigzag_ring_flash_attn_varlen_func
 from ring_flash_attn.adapters.hf_adapter import flash_attention_forward
-from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from RL2.utils.sequences import position_ids_to_cu_seqlens
 
 DATA_PARAMS: Dict[str, Any] = {}

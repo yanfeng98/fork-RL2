@@ -31,7 +31,7 @@ def pack_data_list_to_minibatches(
 
     # We pack sequences into minibatches for higher throughput.
     # There are two constrains:
-    #   * The length of each minibatch cannot exceed `max_length_per_dp`
+    #   * The length of any minibatch cannot exceed `max_length_per_dp`
     #   * The number of minibatches must be multiple of dp size (so that
     #     each dp shares identical number of minibatches)
     # To satisfy the first constraint, the number of minibatches must be
@@ -43,8 +43,8 @@ def pack_data_list_to_minibatches(
     # satisfied) and repeat the loop.
     seq_len_list = [len(ex["states"]) for ex in data_list]
     if pair:
-        # When pair, every two adjacent sequences will be 
-        # colocated, so their length are summed.
+        # When pair, every two adjacent sequences will be colocated, so 
+        # their length are summed.
         seq_len_list = torch.tensor(seq_len_list).view(-1, 2).sum(-1).tolist()
     max_length_per_dp = worker.device_mesh["sp"].size() * worker.device_mesh["tp"].size() * (
         worker.config.max_length_per_device

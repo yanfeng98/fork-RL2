@@ -4,16 +4,16 @@ from torch.nn.utils import clip_grad_norm_
 import torch.distributed as dist
 import transformers
 from RL2.utils.parallelism import prepare_tp_model, prepare_dp_model
-from RL2.utils.comm import (
-    split_and_scatter_list,
-    boardcast_list,
-    gather_and_concat_list
-)
 from RL2.utils.sequences import (
     pad_tensor_dict_to_multiple_of,
     pack_data_list_to_minibatches,
     split_minibatches_into_data_list,
     resume_order_of_data_list
+)
+from RL2.utils.comm import (
+    split_and_scatter_list,
+    boardcast_list,
+    gather_and_concat_list
 )
 from RL2.utils.offloading import load_model_to_device, load_optimizer_to_device
 

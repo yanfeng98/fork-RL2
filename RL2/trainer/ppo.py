@@ -10,8 +10,8 @@ from RL2.utils.algorithms import (
     compute_gae,
     compute_reinforce_adv
 )
-from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.comm import initialize_global_process_group
+from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.logging import time_logger
 
 

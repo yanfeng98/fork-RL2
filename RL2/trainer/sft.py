@@ -7,13 +7,9 @@ from RL2.datasets import SFTDataset, get_dataloader
 from RL2.workers import Actor
 from RL2.utils.sequences import count_total
 from RL2.utils.functions import aggregate_values
-from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.comm import initialize_global_process_group
-from RL2.utils.logging import (
-    progress_bar,
-    time_logger,
-    gather_and_log
-)
+from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
+from RL2.utils.logging import progress_bar, time_logger, gather_and_log
 
 
 class SFTTrainer(Trainer):

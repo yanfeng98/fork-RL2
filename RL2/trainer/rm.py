@@ -7,13 +7,9 @@ from RL2.trainer import Trainer
 from RL2.datasets import RMDataset, get_dataloader
 from RL2.workers import Critic
 from RL2.utils.functions import aggregate_values
-from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.comm import initialize_global_process_group
-from RL2.utils.logging import (
-    progress_bar,
-    time_logger,
-    gather_and_log
-)
+from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
+from RL2.utils.logging import progress_bar, time_logger, gather_and_log
 
 
 class RMTrainer(Trainer):
