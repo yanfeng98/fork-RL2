@@ -39,22 +39,22 @@ class Critic(Worker):
 
     @time_logger("compute_values")
     @torch.no_grad()
-    def compute_values(self, data_list, step):
+    def compute_values(self, tensor_dicts, step):
         load_model_to_device(self, torch.cuda.current_device())
-        minibatches = self.scatter_and_pack_data_list(data_list)
+        minibatches = self.scatter_and_pack_tensor_dicts(tensor_dicts)
 
         self.model.eval()
         for minibatch in progress_bar(minibatches, desc="Compute values"):
             minibatch["values"] = self.forward(minibatch)
         
         load_model_to_device(self, "cpu")
-        return self.unpack_and_gather_data_list(minibatches)
+        return self.unpack_and_gather_tensor_dicts(minibatches)
 
     @time_logger("update_critic")
-    def update(self, data_list, step: int):
+    def update(self, tensor_dicts, step: int):
 
         load_model_to_device(self, torch.cuda.current_device())
-        batches = self.scatter_and_pack_data_list(data_list, True)
+        batches = self.scatter_and_pack_tensor_dicts(tensor_dicts, True)
 
         self.model.train()
         tbar = progress_bar(

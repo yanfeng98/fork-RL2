@@ -28,9 +28,9 @@ class DPOTrainer(Trainer):
         self.actor.scheduler = self.prepare_scheduler(self.actor)
 
     @time_logger("update_actor")
-    def update_actor(self, data_list, step):
+    def update_actor(self, tensor_dicts, step):
 
-        minibatches = self.actor.scatter_and_pack_data_list(data_list, pair=True)
+        minibatches = self.actor.scatter_and_pack_tensor_dicts(tensor_dicts, pair=True)
         metrics = defaultdict(list)
         for minibatch in progress_bar(
             minibatches, desc="Update actor"
@@ -61,15 +61,15 @@ class DPOTrainer(Trainer):
         for epoch in range(
             step // len(self.train_dataloader), self.config.trainer.n_epochs
         ):
-            for data_list in tqdm(
+            for tensor_dicts in tqdm(
                 self.train_dataloader,
                 desc=f"Epoch {epoch + 1}",
                 disable=(dist.get_rank() != 0),
                 initial=step % len(self.train_dataloader)
             ):
                 step += 1
-                data_list = self.ref_actor.compute_logps(data_list, step)
-                self.update_actor(data_list, step)
+                tensor_dicts = self.ref_actor.compute_logps(tensor_dicts, step)
+                self.update_actor(tensor_dicts, step)
                 save_ckpt(self, (self.actor,), step)
         save_model(self, self.actor)
 

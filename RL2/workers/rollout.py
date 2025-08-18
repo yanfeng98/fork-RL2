@@ -141,21 +141,21 @@ class Rollout(Worker):
 
         reward = self.env.reward_fn(messages, answer)
 
-        ex = tokenize_messages(
+        td = tokenize_messages(
             self.tokenizer,
             messages,
             self.config.apply_chat_template
         )
-        ex.update({
-            "rewards": torch.FloatTensor((ex["states"].shape[-1] - 1) * [0] + [reward]),
-            "eos_mask": torch.LongTensor((ex["states"].shape[-1] - 1) * [0] + [1])
+        td.update({
+            "rewards": torch.FloatTensor((td["states"].shape[-1] - 1) * [0] + [reward]),
+            "eos_mask": torch.LongTensor((td["states"].shape[-1] - 1) * [0] + [1])
         })
 
         metric["n_turns"].append(turn + 1)
         metric["rewards"].append(reward)
-        metric["trajectory_length"].append(len(ex["states"]))
+        metric["trajectory_length"].append(len(td["states"]))
 
-        return ex, messages, metric
+        return td, messages, metric
 
     @time_logger("rollout")
     def __call__(self, data_list, train: bool, step: int):
@@ -185,7 +185,7 @@ class Rollout(Worker):
 
         if self.device_mesh["tp"].get_local_rank() == 0:
 
-            data_list, all_messages, metrics = map(list, zip(*outputs))
+            tensor_dicts, all_messages, metrics = map(list, zip(*outputs))
 
             if dist.get_rank() == 0:
                 tqdm.write(json.dumps(all_messages[0], indent=4))
@@ -200,23 +200,23 @@ class Rollout(Worker):
             if not train:
                 return
 
-            data_list = gather_and_concat_list(
-                data_list, self.device_mesh["dp"]
+            tensor_dicts = gather_and_concat_list(
+                tensor_dicts, self.device_mesh["dp"]
             )
 
             if dist.get_rank() == 0:
                 if not self.config.dynamic_filtering:
-                    return data_list
+                    return tensor_dicts
 
                 rewards = torch.FloatTensor(
-                    [ex["rewards"].sum() for ex in data_list]
+                    [td["rewards"].sum() for td in tensor_dicts]
                 ).view(-1, self.config.responses_per_prompt)
                 are_filtered = (rewards.std(-1) == 0).tolist()
                 wandb.log({
                     "dynamic_filtering_ratio": sum(are_filtered) / len(are_filtered)
                 }, step=step)
                 return sum([
-                    data_list[idx * self.config.responses_per_prompt:(idx + 1) * self.config.responses_per_prompt]
+                    tensor_dicts[idx * self.config.responses_per_prompt:(idx + 1) * self.config.responses_per_prompt]
                     for idx, is_filtered in enumerate(are_filtered)
                     if not is_filtered
                 ], [])

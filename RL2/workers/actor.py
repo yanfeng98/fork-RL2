@@ -73,9 +73,9 @@ class Actor(Worker):
 
     @time_logger("compute_logps")
     @torch.no_grad()
-    def compute_logps(self, data_list, step):
+    def compute_logps(self, tensor_dicts, step):
         load_model_to_device(self, torch.cuda.current_device())
-        minibatches = self.scatter_and_pack_data_list(data_list)
+        minibatches = self.scatter_and_pack_tensor_dicts(tensor_dicts)
 
         prefix = "old" if self.train else "ref"
 
@@ -87,10 +87,10 @@ class Actor(Worker):
         
         if not self.train:
             load_model_to_device(self, "cpu")
-        return self.unpack_and_gather_data_list(minibatches) 
+        return self.unpack_and_gather_tensor_dicts(minibatches) 
     
     @time_logger("update_actor")
-    def update(self, data_list, step: int):
+    def update(self, tensor_dicts, step: int):
         
         load_model_to_device(self, torch.cuda.current_device())
         if step < self.config.freeze_steps:
@@ -99,7 +99,7 @@ class Actor(Worker):
             )
             load_model_to_device(self, "cpu")
             return state_dict
-        batches = self.scatter_and_pack_data_list(data_list, True)
+        batches = self.scatter_and_pack_tensor_dicts(tensor_dicts, True)
 
         self.model.train()
         tbar = progress_bar(

@@ -19,14 +19,14 @@ def pad_tensor_dict_to_multiple_of(tensor_dict, multiple_of):
     tensor_dict["position_ids"] = torch.arange(len(tensor_dict["states"]))
     return tensor_dict
 
-def pack_data_list_to_minibatch(data_list):
+def pack_tensor_dicts_to_minibatch(tensor_dicts):
     return {
-        k: torch.cat([ex[k] for ex in data_list])
-        for k in data_list[0].keys()
+        k: torch.cat([td[k] for td in tensor_dicts])
+        for k in tensor_dicts[0].keys()
     }
 
-def pack_data_list_to_minibatches(
-    worker, data_list, pair=False
+def pack_tensor_dicts_to_minibatches(
+    worker, tensor_dicts, pair=False
 ):
 
     # We pack sequences into minibatches for higher throughput.
@@ -41,7 +41,7 @@ def pack_data_list_to_minibatches(
     # check whether the first constraint is satisfied. If not, we increase 
     # `n_minibatches` by dp size (so that the second constraint is always 
     # satisfied) and repeat the loop.
-    seq_len_list = [len(ex["states"]) for ex in data_list]
+    seq_len_list = [len(td["states"]) for td in tensor_dicts]
     if pair:
         # When pair, every two adjacent sequences will be colocated, so 
         # their length are summed.
@@ -74,9 +74,9 @@ def pack_data_list_to_minibatches(
             sequence = {
                 k: torch.arange(sequence_length) if k == "position_ids"
                 else torch.zeros((sequence_length), dtype=v.dtype)
-                for k, v in data_list[0].items()
+                for k, v in tensor_dicts[0].items()
             }
-            data_list.extend(PAD_SEQUENCES * [sequence])
+            tensor_dicts.extend(PAD_SEQUENCES * [sequence])
             seq_len_list.extend(PAD_SEQUENCES * [sequence_length])
         else:
             PAD_SEQUENCES = 0
@@ -101,8 +101,8 @@ def pack_data_list_to_minibatches(
     SHUFFLE_INDICES = sum(partitions, [])
 
     return [
-        pack_data_list_to_minibatch([
-            data_list[p] for p in partition
+        pack_tensor_dicts_to_minibatch([
+            tensor_dicts[p] for p in partition
         ])
         for partition in partitions
     ]
@@ -115,9 +115,9 @@ def position_ids_to_cu_seqlens(position_ids):
         torch.tensor(position_ids.size(), dtype=torch.int32)
     ))
 
-def split_minibatches_into_data_list(minibatches):
+def split_minibatches_into_tensor_dicts(minibatches):
     
-    data_list = []
+    tensor_dicts = []
     for minibatch in minibatches:
         cu_seqlens = position_ids_to_cu_seqlens(
             minibatch["position_ids"]
@@ -125,21 +125,21 @@ def split_minibatches_into_data_list(minibatches):
         for start_idx, end_idx in zip(
             cu_seqlens[:-1], cu_seqlens[1:]
         ):
-            data_list.append({
+            tensor_dicts.append({
                 k: v[start_idx:end_idx].to("cpu")
                 for k, v in minibatch.items()
             })
         
-    return data_list
+    return tensor_dicts
 
-def resume_order_of_data_list(raw_data_list):
+def resume_order_of_tensor_dicts(raw_tensor_dicts):
 
-    data_list = len(raw_data_list) * [None]
-    for idx, ex in zip(SHUFFLE_INDICES, raw_data_list):
-        data_list[idx] = ex
+    tensor_dicts = len(raw_tensor_dicts) * [None]
+    for idx, td in zip(SHUFFLE_INDICES, raw_tensor_dicts):
+        tensor_dicts[idx] = td
     if PAD_SEQUENCES > 0:
-        data_list = data_list[:-PAD_SEQUENCES]
-    return data_list
+        tensor_dicts = tensor_dicts[:-PAD_SEQUENCES]
+    return tensor_dicts
 
 def count_total(minibatches, key, device_mesh):
         

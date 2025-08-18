@@ -27,9 +27,9 @@ class RMTrainer(Trainer):
         self.critic.scheduler = self.prepare_scheduler(self.critic)
 
     @time_logger("update_critic")
-    def update_critic(self, data_list, step):
+    def update_critic(self, tensor_dicts, step):
 
-        minibatches = self.critic.scatter_and_pack_data_list(data_list, pair=True)
+        minibatches = self.critic.scatter_and_pack_tensor_dicts(tensor_dicts, pair=True)
         metrics = defaultdict(list)
         for minibatch in progress_bar(
             minibatches, desc="Update critic"
@@ -54,14 +54,14 @@ class RMTrainer(Trainer):
         for epoch in range(
             step // len(self.train_dataloader), self.config.trainer.n_epochs
         ):
-            for data_list in tqdm(
+            for tensor_dicts in tqdm(
                 self.train_dataloader,
                 desc=f"Epoch {epoch + 1}",
                 disable=(dist.get_rank() != 0),
                 initial=step % len(self.train_dataloader)
             ):
                 step += 1
-                self.update_critic(data_list, step)
+                self.update_critic(tensor_dicts, step)
                 save_ckpt(self, (self.critic,), step)
         save_model(self, self.critic, rm=True)
 

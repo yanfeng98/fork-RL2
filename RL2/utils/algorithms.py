@@ -19,15 +19,15 @@ def compute_approx_kl(
     else:
         raise NotImplementedError
 
-def compute_gae(data_list, gamma, lamda):
+def compute_gae(tensor_dicts, gamma, lamda):
 
     # extract rewards and values of action tokens
     rewards, values, action_mask = [], [], []
-    for ex in data_list:
-        indices = torch.where(ex["action_mask"])[0]
-        rewards.append(ex["rewards"][indices])
-        values.append(ex["values"][indices])
-        action_mask.append(ex["action_mask"][indices])
+    for td in tensor_dicts:
+        indices = torch.where(td["action_mask"])[0]
+        rewards.append(td["rewards"][indices])
+        values.append(td["values"][indices])
+        action_mask.append(td["action_mask"][indices])
     # pad to identical length for efficient computation
     rewards = pad_sequence(rewards, True)
     values = pad_sequence(values, True)
@@ -53,22 +53,22 @@ def compute_gae(data_list, gamma, lamda):
         action_gaes.std() + torch.finfo(gaes.dtype).eps
     )
 
-    for ex, gae, ret in zip(data_list, gaes, returns):
-        ex["advantages"] = torch.zeros_like(ex["rewards"])
-        ex["returns"] = torch.zeros_like(ex["rewards"])
-        indices = torch.where(ex["action_mask"])[0]
-        ex["advantages"][indices] = gae[:len(indices)]
-        ex["returns"][indices] = ret[:len(indices)]
+    for td, gae, ret in zip(tensor_dicts, gaes, returns):
+        td["advantages"] = torch.zeros_like(td["rewards"])
+        td["returns"] = torch.zeros_like(td["rewards"])
+        indices = torch.where(td["action_mask"])[0]
+        td["advantages"][indices] = gae[:len(indices)]
+        td["returns"][indices] = ret[:len(indices)]
 
 def compute_reinforce_adv(
-    data_list,
+    tensor_dicts,
     responses_per_prompt,
     global_norm: bool,
     norm_var: bool
 ):
     
     rewards = torch.FloatTensor(
-        [ex["rewards"].sum() for ex in data_list]
+        [td["rewards"].sum() for td in tensor_dicts]
     ).view(-1, responses_per_prompt)
 
     if global_norm:
@@ -84,5 +84,5 @@ def compute_reinforce_adv(
             std + torch.finfo(advantages.dtype).eps
         )
 
-    for ex, advantage in zip(data_list, advantages.flatten()):
-        ex["advantages"] = advantage * ex["action_mask"]
+    for td, advantage in zip(tensor_dicts, advantages.flatten()):
+        td["advantages"] = advantage * td["action_mask"]

@@ -6,9 +6,9 @@ import transformers
 from RL2.utils.parallelism import prepare_tp_model, prepare_dp_model
 from RL2.utils.sequences import (
     pad_tensor_dict_to_multiple_of,
-    pack_data_list_to_minibatches,
-    split_minibatches_into_data_list,
-    resume_order_of_data_list
+    pack_tensor_dicts_to_minibatches,
+    split_minibatches_into_tensor_dicts,
+    resume_order_of_tensor_dicts
 )
 from RL2.utils.comm import (
     split_and_scatter_list,
@@ -71,28 +71,28 @@ class Worker:
 
         load_model_to_device(self, "cpu")
 
-    def scatter_and_pack_data_list(
-        self, data_list, pack_minibatches=False, pair=False
+    def scatter_and_pack_tensor_dicts(
+        self, tensor_dicts, pack_minibatches=False, pair=False
     ):
 
         if pack_minibatches:
             # Pack minibatches into multiple batches, where each batch is 
             # used for an update and contains multiple minibatches.
             if dist.get_rank() == 0:
-                assert len(data_list) >= self.config.update_per_rollout, \
-                    f"The number of trajectories {len(data_list)} is less than the number of updates {self.config.update_per_rollout}."
+                assert len(tensor_dicts) >= self.config.update_per_rollout, \
+                    f"The number of trajectories {len(tensor_dicts)} is less than the number of updates {self.config.update_per_rollout}."
                 bsz = math.ceil(
-                    len(data_list) / self.config.update_per_rollout
+                    len(tensor_dicts) / self.config.update_per_rollout
                 )
                 return [
-                    self.scatter_and_pack_data_list(
-                        data_list[update * bsz:(update + 1) * bsz]
+                    self.scatter_and_pack_tensor_dicts(
+                        tensor_dicts[update * bsz:(update + 1) * bsz]
                     )
                     for update in range(self.config.update_per_rollout)
                 ]
             else:
                 return [
-                    self.scatter_and_pack_data_list(None)
+                    self.scatter_and_pack_tensor_dicts(None)
                     for _ in range(self.config.update_per_rollout)
                 ]
 
@@ -103,14 +103,14 @@ class Worker:
                     # the length of each sequence needs to be multiple of 2 * 
                     # sp size and each rank sequentially get the head and tail.
                     # See https://zhuanlan.zhihu.com/p/683714620.
-                    data_list = [
+                    tensor_dicts = [
                         pad_tensor_dict_to_multiple_of(
-                            ex, 2 * self.device_mesh["sp"].size()
+                            td, 2 * self.device_mesh["sp"].size()
                         )
-                        for ex in data_list
+                        for td in tensor_dicts
                     ]
-                    minibatches = pack_data_list_to_minibatches(
-                        self, data_list, pair
+                    minibatches = pack_tensor_dicts_to_minibatches(
+                        self, tensor_dicts, pair
                     )
                 minibatches = split_and_scatter_list(
                     minibatches
@@ -131,14 +131,14 @@ class Worker:
             self.device_mesh["tp"]
         )
 
-    def unpack_and_gather_data_list(self, minibatches):
+    def unpack_and_gather_tensor_dicts(self, minibatches):
         
-        data_list = split_minibatches_into_data_list(minibatches)
-        data_list = gather_and_concat_list(
-            data_list, self.device_mesh["dp"]
+        tensor_dicts = split_minibatches_into_tensor_dicts(minibatches)
+        tensor_dicts = gather_and_concat_list(
+            tensor_dicts, self.device_mesh["dp"]
         )
         if dist.get_rank() == 0:
-            return resume_order_of_data_list(data_list)
+            return resume_order_of_tensor_dicts(tensor_dicts)
             
     def backward(self, loss):
         # https://github.com/ChenmienTan/RL2/issues/11
