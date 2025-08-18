@@ -4,7 +4,7 @@ from transformers import AutoModelForCausalLM
 from RL2.workers import Worker
 from RL2.utils.models import get_state_dict
 from RL2.utils.sequences import count_total
-from RL2.utils.ring_attn import update_params_of_ring_attn
+from RL2.utils.ring_attn import ring_attn_manager
 from RL2.utils.functions import (
     compute_logsumexp,
     gather_action_logits,
@@ -42,10 +42,8 @@ class Actor(Worker):
 
         self.prepare_model_optimizer()
 
+    @ring_attn_manager
     def forward(self, minibatch, return_entropy=False):
-        update_params_of_ring_attn(
-            minibatch["cu_seqlens"], self.device_mesh["sp"]
-        )
 
         logits = self.model(
             input_ids=minibatch["states"],

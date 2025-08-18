@@ -3,7 +3,7 @@ import torch
 from transformers import AutoModelForTokenClassification
 from RL2.workers import Worker
 from RL2.utils.sequences import count_total
-from RL2.utils.ring_attn import update_params_of_ring_attn
+from RL2.utils.ring_attn import ring_attn_manager
 from RL2.utils.functions import aggregate_values
 from RL2.utils.offloading import load_model_to_device
 from RL2.utils.logging import (
@@ -28,10 +28,8 @@ class Critic(Worker):
 
         self.prepare_model_optimizer()
 
+    @ring_attn_manager
     def forward(self, minibatch) -> torch.Tensor:
-        update_params_of_ring_attn(
-            minibatch["cu_seqlens"], self.device_mesh["sp"]
-        )
 
         return self.model(
             input_ids=minibatch["states"],
