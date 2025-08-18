@@ -119,7 +119,7 @@ def aggregate_values(
         cu_seqlens = position_ids_to_cu_seqlens(
             minibatch["position_ids"]
         )
-        return torch.cat([
+        return torch.stack([
             tensor[start_idx:end_idx].sum()
             for start_idx, end_idx in zip(
                 cu_seqlens[:-1], cu_seqlens[1:]
