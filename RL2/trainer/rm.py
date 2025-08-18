@@ -6,7 +6,7 @@ from tqdm import tqdm
 from RL2.trainer import Trainer
 from RL2.datasets import RMDataset, get_dataloader
 from RL2.workers import Critic
-from RL2.utils.functions import sequence_all_reduce
+from RL2.utils.functions import aggregate_values
 from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.logging import (
     progress_bar,
@@ -38,10 +38,8 @@ class RMTrainer(Trainer):
             minibatches, desc="Update critic"
         ):
             rewards = self.critic.forward(minibatch)
-            chosen_rewards, rejected_rewards = sequence_all_reduce(
-                rewards,
-                minibatch["cu_seqlens"],
-                self.critic.device_mesh["sp"]
+            chosen_rewards, rejected_rewards = aggregate_values(
+                rewards, minibatch, "token_sum"
             ).view(-1, 2).T
             reward_margins = chosen_rewards - rejected_rewards
             loss = - F.logsigmoid(reward_margins).sum() / self.config.data.batch_size
@@ -51,7 +49,7 @@ class RMTrainer(Trainer):
 
         grad_norm = self.critic.optimizer_step()
         metrics["grad_norm"].append(grad_norm)
-        gather_and_log(metrics, self.critic.device_mesh, step)
+        gather_and_log(metrics, self.critic.device_mesh["dp"], step)
 
     def train(self):
 

@@ -11,6 +11,7 @@ import transformers
 from ring_flash_attn.zigzag_ring_flash_attn_varlen import zigzag_ring_flash_attn_varlen_func
 from ring_flash_attn.adapters.hf_adapter import flash_attention_forward
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
+from RL2.utils.sequences import position_ids_to_cu_seqlens
 
 DATA_PARAMS: Dict[str, Any] = {}
 
@@ -69,14 +70,6 @@ def _flash_attention_forward(
 
 transformers.modeling_flash_attention_utils._flash_attention_forward = _flash_attention_forward
 ALL_ATTENTION_FUNCTIONS["flash_attention_2"] = flash_attention_forward
-
-def position_ids_to_cu_seqlens(position_ids):
-
-    indices = torch.arange(len(position_ids), dtype=torch.int32)
-    return torch.cat((
-        indices[position_ids == 0],
-        torch.tensor(position_ids.size(), dtype=torch.int32)
-    ))
 
 def ring_attn_preprocess(raw_minibatch, device_mesh):
 

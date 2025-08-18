@@ -34,7 +34,7 @@ class SFTTrainer(Trainer):
 
         minibatches = self.actor.scatter_and_pack_data_list(data_list)
         total_actions = count_total(
-            minibatches, "action_mask", self.actor.device_mesh
+            minibatches, "action_mask", self.actor.device_mesh["dp"]
         )
         metrics = defaultdict(list)
         for minibatch in progress_bar(
@@ -46,20 +46,14 @@ class SFTTrainer(Trainer):
                 minibatch,
                 self.actor.config.agg_mode,
                 total_actions,
-                self.config.data.batch_size,
-                self.actor.device_mesh["sp"]
+                self.config.data.batch_size
             )
             self.actor.backward(loss)
             metrics["loss"].append(loss.item())
 
         grad_norm = self.actor.optimizer_step()
         metrics["grad_norm"].append(grad_norm)
-        gather_and_log(
-            metrics,
-            self.actor.device_mesh,
-            step,
-            self.actor.config.agg_mode
-        )
+        gather_and_log(metrics, self.actor.device_mesh["dp"], step)
 
     def train(self):
 

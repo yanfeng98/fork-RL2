@@ -4,14 +4,15 @@ from torch.nn.utils import clip_grad_norm_
 import torch.distributed as dist
 import transformers
 from RL2.utils.models import prepare_tp_model, prepare_dp_model
-from RL2.utils.comm import split_and_scatter_list, gather_and_concat_list
+from RL2.utils.comm import (
+    split_and_scatter_list,
+    boardcast_list,
+    gather_and_concat_list
+)
 from RL2.utils.sequences import (
-    group_data_list_into_all_rank_data_lists,
-    scatter_data_lists_along_sp_dim,
-    scatter_data_lists_along_tp_dim,
-    pack_data_lists_into_minibatches,
+    pad_tensor_dict_to_multiple_of,
+    pack_data_list_to_minibatches,
     split_minibatches_into_data_list,
-    gather_data_list_along_sp_dim,
     resume_order_of_data_list
 )
 from RL2.utils.offloading import load_model_to_device, load_optimizer_to_device
@@ -98,46 +99,46 @@ class Worker:
         if self.device_mesh["tp"].get_local_rank() == 0:
             if self.device_mesh["sp"].get_local_rank() == 0:
                 if self.device_mesh["dp"].get_local_rank() == 0:
-                    all_rank_data_lists = group_data_list_into_all_rank_data_lists(
+                    # We use ZigZag Ring Attention to partition sequences, where 
+                    # the length of each sequence needs to be multiple of 2 * 
+                    # sp size and each rank sequentially get the head and tail.
+                    # See https://zhuanlan.zhihu.com/p/683714620.
+                    data_list = [
+                        pad_tensor_dict_to_multiple_of(
+                            ex, 2 * self.device_mesh["sp"].size()
+                        )
+                        for ex in data_list
+                    ]
+                    minibatches = pack_data_list_to_minibatches(
                         self, data_list, pair
                     )
-                data_lists = split_and_scatter_list(
-                    all_rank_data_lists
+                minibatches = split_and_scatter_list(
+                    minibatches
                     if self.device_mesh["dp"].get_local_rank() == 0
                     else None,
                     self.device_mesh["dp"]
-                )[0]
-            data_lists = scatter_data_lists_along_sp_dim(
-                data_lists
+                )
+            minibatches = boardcast_list(
+                minibatches
                 if self.device_mesh["sp"].get_local_rank() == 0
                 else None,
                 self.device_mesh["sp"]
             )
-        data_lists = scatter_data_lists_along_tp_dim(
-            data_lists
+        return boardcast_list(
+            minibatches
             if self.device_mesh["tp"].get_local_rank() == 0
             else None,
             self.device_mesh["tp"]
         )
-        return pack_data_lists_into_minibatches(
-            data_lists,
-            self.device_mesh["tp"].size()
-        )
 
     def unpack_and_gather_data_list(self, minibatches):
         
-        if self.device_mesh["tp"].get_local_rank() != 0:
-            return
         data_list = split_minibatches_into_data_list(minibatches)
-        data_list = gather_data_list_along_sp_dim(
-            data_list, self.device_mesh["sp"]
+        data_list = gather_and_concat_list(
+            data_list, self.device_mesh["dp"]
         )
-        if self.device_mesh["sp"].get_local_rank() == 0:
-            data_list = gather_and_concat_list(
-                data_list, self.device_mesh["dp"]
-            )
-            if self.device_mesh["dp"].get_local_rank() == 0:
-                return resume_order_of_data_list(data_list)
+        if dist.get_rank() == 0:
+            return resume_order_of_data_list(data_list)
             
     def backward(self, loss):
         # https://github.com/ChenmienTan/RL2/issues/11

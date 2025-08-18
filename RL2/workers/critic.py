@@ -65,10 +65,10 @@ class Critic(Worker):
         for batch in batches:
 
             total_actions = count_total(
-                batch, "action_mask", self.device_mesh
+                batch, "action_mask", self.device_mesh["dp"]
             )
             total_sequences = count_total(
-                batch, "eos_mask", self.device_mesh
+                batch, "eos_mask", self.device_mesh["dp"]
             )
             metric = defaultdict(list)
             for minibatch in batch:
@@ -89,8 +89,7 @@ class Critic(Worker):
                     minibatch,
                     self.config.agg_mode,
                     total_actions,
-                    total_sequences,
-                    self.device_mesh["sp"]
+                    total_sequences
                 )
 
                 self.backward(loss)
@@ -103,9 +102,7 @@ class Critic(Worker):
             
             for k, v in metric.items():
                 metrics[k].append(
-                    gather_and_reduce(
-                        v, self.config.agg_mode, self.device_mesh
-                    )
+                    gather_and_reduce(v, self.device_mesh["dp"])
                 )
             metrics["critic/grad_norm"].append(grad_norm)
 

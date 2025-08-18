@@ -6,7 +6,7 @@ from tqdm import tqdm
 from RL2.trainer import Trainer
 from RL2.datasets import DPODataset, get_dataloader
 from RL2.workers import Actor
-from RL2.utils.functions import sequence_all_reduce
+from RL2.utils.functions import aggregate_values
 from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.logging import (
     progress_bar,
@@ -39,10 +39,10 @@ class DPOTrainer(Trainer):
             minibatches, desc="Update actor"
         ):
             logps = self.actor.forward(minibatch)
-            chosen_rewards, rejected_rewards = sequence_all_reduce(
+            chosen_rewards, rejected_rewards = aggregate_values(
                 self.config.actor.beta * (logps - minibatch["ref_logps"]),
-                minibatch["cu_seqlens"],
-                self.actor.device_mesh["sp"]
+                minibatch,
+                "token_sum"
             ).view(-1, 2).T
             reward_margins = chosen_rewards - rejected_rewards
             loss = - F.logsigmoid(reward_margins).sum() / self.config.data.batch_size
@@ -56,7 +56,7 @@ class DPOTrainer(Trainer):
 
         grad_norm = self.actor.optimizer_step()
         metrics["grad_norm"].append(grad_norm)
-        gather_and_log(metrics, self.actor.device_mesh, step)
+        gather_and_log(metrics, self.actor.device_mesh["dp"], step)
 
     def train(self):
 
