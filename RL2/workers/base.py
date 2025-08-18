@@ -3,7 +3,7 @@ import torch
 from torch.nn.utils import clip_grad_norm_
 import torch.distributed as dist
 import transformers
-from RL2.utils.models import prepare_tp_model, prepare_dp_model
+from RL2.utils.parallelism import prepare_tp_model, prepare_dp_model
 from RL2.utils.comm import (
     split_and_scatter_list,
     boardcast_list,

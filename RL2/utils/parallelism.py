@@ -22,8 +22,6 @@ from transformers import (
     Qwen3ForTokenClassification
 )
 
-
-
 def prepare_llama_tp_layer(layer, device_mesh):
 
     parallelize_plan = {
