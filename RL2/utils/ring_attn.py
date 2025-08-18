@@ -92,7 +92,7 @@ def ring_attn_preprocess(raw_minibatch, device_mesh):
             ))
             tensors.append(tensor)
         minibatch[k] = torch.cat(tensors)
-    cu_seqlens /= device_mesh.size()
+    cu_seqlens = cu_seqlens // device_mesh.size()
     return minibatch, cu_seqlens
 
 def pad_tokens_and_unsqueeze(minibatch, cu_seqlens, multiple_of):
@@ -163,14 +163,14 @@ def ring_attn_postprocess(output, cu_seqlens, device_mesh):
             for tensor in output
         )
 
-    return torch.cat((
+    return torch.cat([
         gather_tensor_along_sp_dim(
             output[start_idx:end_idx], device_mesh
         )
         for start_idx, end_idx in zip(
             cu_seqlens[:-1], cu_seqlens[1:]
         )
-    ))
+    ])
 
 def ring_attn_manager(func):
 
