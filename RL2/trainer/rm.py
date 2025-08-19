@@ -25,7 +25,9 @@ def update(worker, minibatches, step):
     ):
         rewards = worker.forward(minibatch)
         chosen_rewards, rejected_rewards = aggregate_values(
-            rewards, minibatch, "seq_token_sum"
+            minibatch["eos_mask"] * rewards,
+            minibatch,
+            "seq_token_sum"
         ).view(-1, 2).T
         reward_margins = chosen_rewards - rejected_rewards
         loss = - F.logsigmoid(reward_margins).sum() / total_sequences
