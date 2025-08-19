@@ -2,7 +2,7 @@ from collections import defaultdict
 import torch
 from transformers import AutoModelForTokenClassification
 from RL2.workers import Worker
-from RL2.utils.sequences import count_total
+from RL2.utils.sequences import data_manager, count_total
 from RL2.utils.ring_attn import ring_attn_manager
 from RL2.utils.functions import aggregate_values
 from RL2.utils.offloading import model_offloading_manager
@@ -39,21 +39,20 @@ class Critic(Worker):
 
     @time_logger("compute_values")
     @model_offloading_manager
+    @data_manager(gather=True)
     @torch.no_grad()
-    def compute_values(self, tensor_dicts, step):
-        minibatches = self.scatter_and_pack_tensor_dicts(tensor_dicts)
+    def compute_values(self, minibatches, step):
 
         self.model.eval()
         for minibatch in progress_bar(minibatches, desc="Compute values"):
             minibatch["values"] = self.forward(minibatch)
         
-        return self.unpack_and_gather_tensor_dicts(minibatches)
+        return minibatches
 
     @time_logger("update_critic")
     @model_offloading_manager
-    def update(self, tensor_dicts, step: int):
-
-        batches = self.scatter_and_pack_tensor_dicts(tensor_dicts, True)
+    @data_manager(pack_minibatches=True)
+    def update(self, batches, step: int):
 
         self.model.train()
         tbar = progress_bar(
@@ -63,11 +62,10 @@ class Critic(Worker):
         metrics = defaultdict(list)
         for batch in batches:
 
-            total_actions = count_total(
-                batch, "action_mask", self.device_mesh["dp"]
-            )
-            total_sequences = count_total(
-                batch, "eos_mask", self.device_mesh["dp"]
+            total_actions, total_sequences = count_total(
+                batch,
+                ("action_mask", "eos_mask"),
+                self.device_mesh["dp"]
             )
             metric = defaultdict(list)
             for minibatch in batch:

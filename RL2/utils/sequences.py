@@ -1,8 +1,14 @@
 from typing import List
 import math
+import functools
 import torch
 import torch.distributed as dist
 from RL2.utils.seqlen_balance import get_seqlen_balanced_partitions
+from RL2.utils.comm import (
+    split_and_scatter_list,
+    boardcast_list,
+    gather_and_concat_list
+)
 
 def pad_tensor_dict_to_multiple_of(tensor_dict, multiple_of):
 
@@ -107,6 +113,73 @@ def pack_tensor_dicts_to_minibatches(
         for partition in partitions
     ]
 
+def scatter_and_pack_tensor_dicts(
+    worker, tensor_dicts, pack_minibatches=False, pair=False
+):
+
+    if pack_minibatches:
+        # Pack minibatches into multiple batches, where each batch is 
+        # used for an update.
+        if dist.get_rank() == 0:
+            assert len(tensor_dicts) >= worker.config.update_per_rollout, \
+                f"The number of sequences {len(tensor_dicts)} is less than the number of updates {worker.config.update_per_rollout}."
+            bsz = math.ceil(
+                len(tensor_dicts) / worker.config.update_per_rollout
+            )
+            return [
+                scatter_and_pack_tensor_dicts(
+                    worker, tensor_dicts[update * bsz:(update + 1) * bsz]
+                )
+                for update in range(worker.config.update_per_rollout)
+            ]
+        else:
+            return [
+                scatter_and_pack_tensor_dicts(worker, None)
+                for _ in range(worker.config.update_per_rollout)
+            ]
+
+    if worker.device_mesh["tp"].get_local_rank() == 0:
+        if worker.device_mesh["sp"].get_local_rank() == 0:
+            if worker.device_mesh["dp"].get_local_rank() == 0:
+                # We use ZigZag Ring Attention to partition sequences, where 
+                # the length of each sequence needs to be multiple of 2 * 
+                # sp size and each rank sequentially get the head and tail.
+                # See https://zhuanlan.zhihu.com/p/683714620.
+                tensor_dicts = [
+                    pad_tensor_dict_to_multiple_of(
+                        td, 2 * worker.device_mesh["sp"].size()
+                    )
+                    for td in tensor_dicts
+                ]
+                minibatches = pack_tensor_dicts_to_minibatches(
+                    worker, tensor_dicts, pair
+                )
+            minibatches = split_and_scatter_list(
+                minibatches
+                if worker.device_mesh["dp"].get_local_rank() == 0
+                else None,
+                worker.device_mesh["dp"]
+            )
+        minibatches = boardcast_list(
+            minibatches
+            if worker.device_mesh["sp"].get_local_rank() == 0
+            else None,
+            worker.device_mesh["sp"]
+        )
+    minibatches = boardcast_list(
+        minibatches
+        if worker.device_mesh["tp"].get_local_rank() == 0
+        else None,
+        worker.device_mesh["tp"]
+    )
+    return [
+        {
+            k: v.to(torch.cuda.current_device())
+            for k, v in minibatch.items()
+        }
+        for minibatch in minibatches
+    ]
+
 def position_ids_to_cu_seqlens(position_ids):
 
     indices = torch.arange(
@@ -149,7 +222,38 @@ def resume_order_of_tensor_dicts(raw_tensor_dicts):
         tensor_dicts = tensor_dicts[:-PAD_SEQUENCES]
     return tensor_dicts
 
+def unpack_and_gather_tensor_dicts(worker, minibatches):
+        
+    tensor_dicts = split_minibatches_into_tensor_dicts(minibatches)
+    tensor_dicts = gather_and_concat_list(
+        tensor_dicts, worker.device_mesh["dp"]
+    )
+    if dist.get_rank() == 0:
+        return resume_order_of_tensor_dicts(tensor_dicts)
+
+def data_manager(pack_minibatches=False, pair=False, gather=False):
+    def decorator(func):
+        @functools.wraps(func)
+        def func_with_data_scatter_and_gather(
+            worker, tensor_dicts, *args, **kwargs
+        ):
+            minibatches = scatter_and_pack_tensor_dicts(
+                worker, tensor_dicts, pack_minibatches, pair
+            )
+            output = func(worker, minibatches, *args, **kwargs)
+            if gather:
+                output = unpack_and_gather_tensor_dicts(worker, output)
+            return output
+        return func_with_data_scatter_and_gather
+    return decorator
+
 def count_total(minibatches, key, device_mesh):
+
+    if isinstance(key, tuple):
+        return tuple(
+            count_total(minibatches, k, device_mesh)
+            for k in key
+        )
         
     total = sum(
         [minibatch[key].sum() for minibatch in minibatches]

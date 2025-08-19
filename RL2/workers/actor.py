@@ -2,7 +2,7 @@ from collections import defaultdict
 import torch
 from transformers import AutoModelForCausalLM
 from RL2.workers import Worker
-from RL2.utils.sequences import count_total
+from RL2.utils.sequences import data_manager, count_total
 from RL2.utils.ring_attn import ring_attn_manager
 from RL2.utils.functions import (
     compute_logsumexp,
@@ -73,10 +73,9 @@ class Actor(Worker):
 
     @time_logger("compute_logps")
     @model_offloading_manager
+    @data_manager(gather=True)
     @torch.no_grad()
-    def compute_logps(self, tensor_dicts, step):
-        minibatches = self.scatter_and_pack_tensor_dicts(tensor_dicts)
-
+    def compute_logps(self, minibatches, step):
         prefix = "old" if self.train else "ref"
 
         self.model.eval()
@@ -85,17 +84,16 @@ class Actor(Worker):
         ):
             minibatch[f"{prefix}_logps"] = self.forward(minibatch)
         
-        return self.unpack_and_gather_tensor_dicts(minibatches) 
+        return minibatches
     
     @time_logger("update_actor")
     @model_offloading_manager
-    def update(self, tensor_dicts, step: int):
-        
+    @data_manager(pack_minibatches=True)
+    def update(self, batches, step: int):
         if step < self.config.freeze_steps:
             return get_state_dict(
                 self.model, full_state_dict=False
             )
-        batches = self.scatter_and_pack_tensor_dicts(tensor_dicts, True)
 
         self.model.train()
         tbar = progress_bar(
@@ -105,11 +103,10 @@ class Actor(Worker):
         metrics = defaultdict(list)
         for batch in batches:
             
-            total_actions = count_total(
-                batch, "action_mask", self.device_mesh["dp"]
-            )
-            total_sequences = count_total(
-                batch, "eos_mask", self.device_mesh["dp"]
+            total_actions, total_sequences = count_total(
+                batch,
+                ("action_mask", "eos_mask"),
+                self.device_mesh["dp"]
             )
             metric = defaultdict(list)
             for minibatch in batch:

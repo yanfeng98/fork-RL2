@@ -6,10 +6,36 @@ from tqdm import tqdm
 from RL2.trainer import Trainer
 from RL2.datasets import RMDataset, get_dataloader
 from RL2.workers import Critic
+from RL2.utils.sequences import data_manager, count_total
 from RL2.utils.functions import aggregate_values
 from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.logging import progress_bar, time_logger, gather_and_log
+
+@time_logger("update_critic")
+@data_manager(pair=True)
+def update(worker, minibatches, step):
+
+    total_sequences = count_total(
+        minibatches, "eos_mask", worker.device_mesh["dp"]
+    ) // 2
+    metrics = defaultdict(list)
+    for minibatch in progress_bar(
+        minibatches, desc="Update critic"
+    ):
+        rewards = worker.forward(minibatch)
+        chosen_rewards, rejected_rewards = aggregate_values(
+            rewards, minibatch, "seq_token_sum"
+        ).view(-1, 2).T
+        reward_margins = chosen_rewards - rejected_rewards
+        loss = - F.logsigmoid(reward_margins).sum() / total_sequences
+        worker.backward(loss)
+        metrics["loss"].append(loss.item())
+        metrics["accuray"].extend((reward_margins > 0).tolist())
+
+    grad_norm = worker.optimizer_step()
+    metrics["grad_norm"].append(grad_norm)
+    gather_and_log(metrics, worker.device_mesh["dp"], step)
 
 
 class RMTrainer(Trainer):
@@ -26,28 +52,6 @@ class RMTrainer(Trainer):
         )
         self.critic.scheduler = self.prepare_scheduler(self.critic)
 
-    @time_logger("update_critic")
-    def update_critic(self, tensor_dicts, step):
-
-        minibatches = self.critic.scatter_and_pack_tensor_dicts(tensor_dicts, pair=True)
-        metrics = defaultdict(list)
-        for minibatch in progress_bar(
-            minibatches, desc="Update critic"
-        ):
-            rewards = self.critic.forward(minibatch)
-            chosen_rewards, rejected_rewards = aggregate_values(
-                rewards, minibatch, "seq_token_sum"
-            ).view(-1, 2).T
-            reward_margins = chosen_rewards - rejected_rewards
-            loss = - F.logsigmoid(reward_margins).sum() / self.config.data.batch_size
-            self.critic.backward(loss)
-            metrics["loss"].append(loss.item())
-            metrics["accuray"].extend((reward_margins > 0).tolist())
-
-        grad_norm = self.critic.optimizer_step()
-        metrics["grad_norm"].append(grad_norm)
-        gather_and_log(metrics, self.critic.device_mesh["dp"], step)
-
     def train(self):
 
         step = load_ckpt(self, (self.critic,))
@@ -61,7 +65,7 @@ class RMTrainer(Trainer):
                 initial=step % len(self.train_dataloader)
             ):
                 step += 1
-                self.update_critic(tensor_dicts, step)
+                update(self.critic, tensor_dicts, step)
                 save_ckpt(self, (self.critic,), step)
         save_model(self, self.critic, rm=True)
 

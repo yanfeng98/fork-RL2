@@ -6,10 +6,43 @@ from tqdm import tqdm
 from RL2.trainer import Trainer
 from RL2.datasets import DPODataset, get_dataloader
 from RL2.workers import Actor
+from RL2.utils.sequences import data_manager, count_total
 from RL2.utils.functions import aggregate_values
 from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.logging import progress_bar, time_logger, gather_and_log
+
+# TODO: add EOS
+@time_logger("update_actor")
+@data_manager(pair=True)
+def update(worker, minibatches, step):
+
+    total_sequences = count_total(
+        minibatches, "eos_mask", worker.device_mesh["dp"]
+    ) // 2
+    metrics = defaultdict(list)
+    for minibatch in progress_bar(
+        minibatches, desc="Update actor"
+    ):
+        logps = worker.forward(minibatch)
+        chosen_rewards, rejected_rewards = aggregate_values(
+            worker.config.beta * (logps - minibatch["ref_logps"]),
+            minibatch,
+            "seq_token_sum"
+        ).view(-1, 2).T
+        reward_margins = chosen_rewards - rejected_rewards
+        loss = - F.logsigmoid(reward_margins).sum() / total_sequences
+        worker.backward(loss)
+
+        metrics["rewards/chosen"].extend(chosen_rewards.tolist())
+        metrics["rewards/rejected"].extend(rejected_rewards.tolist())
+        metrics["rewards/margin"].extend(reward_margins.tolist())
+        metrics["loss"].append(loss.item())
+        metrics["accuray"].extend((reward_margins > 0).tolist())
+
+    grad_norm = worker.optimizer_step()
+    metrics["grad_norm"].append(grad_norm)
+    gather_and_log(metrics, worker.device_mesh["dp"], step)
 
 
 class DPOTrainer(Trainer):
@@ -27,34 +60,6 @@ class DPOTrainer(Trainer):
         )
         self.actor.scheduler = self.prepare_scheduler(self.actor)
 
-    @time_logger("update_actor")
-    def update_actor(self, tensor_dicts, step):
-
-        minibatches = self.actor.scatter_and_pack_tensor_dicts(tensor_dicts, pair=True)
-        metrics = defaultdict(list)
-        for minibatch in progress_bar(
-            minibatches, desc="Update actor"
-        ):
-            logps = self.actor.forward(minibatch)
-            chosen_rewards, rejected_rewards = aggregate_values(
-                self.config.actor.beta * (logps - minibatch["ref_logps"]),
-                minibatch,
-                "seq_token_sum"
-            ).view(-1, 2).T
-            reward_margins = chosen_rewards - rejected_rewards
-            loss = - F.logsigmoid(reward_margins).sum() / self.config.data.batch_size
-            self.actor.backward(loss)
-
-            metrics["rewards/chosen"].extend(chosen_rewards.tolist())
-            metrics["rewards/rejected"].extend(rejected_rewards.tolist())
-            metrics["rewards/margin"].extend(reward_margins.tolist())
-            metrics["loss"].append(loss.item())
-            metrics["accuray"].extend((reward_margins > 0).tolist())
-
-        grad_norm = self.actor.optimizer_step()
-        metrics["grad_norm"].append(grad_norm)
-        gather_and_log(metrics, self.actor.device_mesh["dp"], step)
-
     def train(self):
 
         step = load_ckpt(self, (self.actor,))
@@ -69,7 +74,7 @@ class DPOTrainer(Trainer):
             ):
                 step += 1
                 tensor_dicts = self.ref_actor.compute_logps(tensor_dicts, step)
-                self.update_actor(tensor_dicts, step)
+                update(self.actor, tensor_dicts, step)
                 save_ckpt(self, (self.actor,), step)
         save_model(self, self.actor)
 
