@@ -5,7 +5,7 @@ from RL2.workers import Worker
 from RL2.utils.sequences import count_total
 from RL2.utils.ring_attn import ring_attn_manager
 from RL2.utils.functions import aggregate_values
-from RL2.utils.offloading import load_model_to_device
+from RL2.utils.offloading import model_offloading_manager
 from RL2.utils.logging import (
     progress_bar,
     time_logger,
@@ -38,22 +38,21 @@ class Critic(Worker):
         ).logits.squeeze(-1) * minibatch["action_mask"]
 
     @time_logger("compute_values")
+    @model_offloading_manager
     @torch.no_grad()
     def compute_values(self, tensor_dicts, step):
-        load_model_to_device(self, torch.cuda.current_device())
         minibatches = self.scatter_and_pack_tensor_dicts(tensor_dicts)
 
         self.model.eval()
         for minibatch in progress_bar(minibatches, desc="Compute values"):
             minibatch["values"] = self.forward(minibatch)
         
-        load_model_to_device(self, "cpu")
         return self.unpack_and_gather_tensor_dicts(minibatches)
 
     @time_logger("update_critic")
+    @model_offloading_manager
     def update(self, tensor_dicts, step: int):
 
-        load_model_to_device(self, torch.cuda.current_device())
         batches = self.scatter_and_pack_tensor_dicts(tensor_dicts, True)
 
         self.model.train()
@@ -107,5 +106,3 @@ class Critic(Worker):
             metrics["critic/grad_norm"].append(grad_norm)
 
         rank0_log(metrics, step)
-
-        load_model_to_device(self, "cpu")

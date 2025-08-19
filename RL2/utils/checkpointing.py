@@ -8,7 +8,7 @@ from torch.distributed.checkpoint.state_dict import (
     set_model_state_dict
 )
 from transformers import AutoModelForSequenceClassification
-from RL2.utils.offloading import load_model_to_device
+from RL2.utils.offloading import model_offloading_manager
 
 def get_state_dict(model, full_state_dict: bool):
 
@@ -18,6 +18,16 @@ def get_state_dict(model, full_state_dict: bool):
     )
     return get_model_state_dict(model, options=options)
 
+@model_offloading_manager
+def get_worker_ckpt(worker):
+    return {
+        "model": get_state_dict(
+            worker.model, full_state_dict=False
+        ),
+        "optimizer": worker.optimizer.state_dict(),
+        "scheduler": worker.scheduler.state_dict()
+    }
+
 def get_ckpt(trainer, workers, step):
 
     ckpt = {
@@ -26,18 +36,18 @@ def get_ckpt(trainer, workers, step):
     }
 
     for idx, worker in enumerate(workers):
-
-        load_model_to_device(worker, torch.cuda.current_device())
-        ckpt[f"worker{idx}"] = {
-            "model": get_state_dict(
-                worker.model, full_state_dict=False
-            ),
-            "optimizer": worker.optimizer.state_dict(),
-            "scheduler": worker.scheduler.state_dict()
-        }
-        load_model_to_device(worker, "cpu")
+        ckpt[f"worker{idx}"] = get_worker_ckpt(worker)
 
     return ckpt
+
+@model_offloading_manager
+def load_worker_ckpt(worker, ckpt):
+
+    set_model_state_dict(
+        worker.model, ckpt["model"]
+    )
+    worker.optimizer.load_state_dict(ckpt["optimizer"])
+    worker.scheduler.load_state_dict(ckpt["scheduler"])
 
 def load_ckpt(trainer, workers):
 
@@ -55,15 +65,7 @@ def load_ckpt(trainer, workers):
     dcp.load(ckpt, checkpoint_id)
     trainer.train_dataloader.load_state_dict(ckpt["dataloader"])
     for idx, worker in enumerate(workers):
-
-        worker_ckpt = ckpt[f"worker{idx}"]
-        load_model_to_device(worker, torch.cuda.current_device())
-        set_model_state_dict(
-            worker.model, worker_ckpt["model"]
-        )
-        load_model_to_device(worker, "cpu")
-        worker.optimizer.load_state_dict(worker_ckpt["optimizer"])
-        worker.scheduler.load_state_dict(worker_ckpt["scheduler"])
+        load_worker_ckpt(worker, ckpt[f"worker{idx}"])
 
     return ckpt["step"]
 

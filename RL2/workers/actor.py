@@ -11,8 +11,8 @@ from RL2.utils.functions import (
     aggregate_values
 )
 from RL2.utils.algorithms import compute_approx_kl
+from RL2.utils.offloading import model_offloading_manager
 from RL2.utils.checkpointing import get_state_dict
-from RL2.utils.offloading import load_model_to_device
 from RL2.utils.logging import (
     progress_bar,
     time_logger,
@@ -72,9 +72,9 @@ class Actor(Worker):
             return logps
 
     @time_logger("compute_logps")
+    @model_offloading_manager
     @torch.no_grad()
     def compute_logps(self, tensor_dicts, step):
-        load_model_to_device(self, torch.cuda.current_device())
         minibatches = self.scatter_and_pack_tensor_dicts(tensor_dicts)
 
         prefix = "old" if self.train else "ref"
@@ -85,20 +85,16 @@ class Actor(Worker):
         ):
             minibatch[f"{prefix}_logps"] = self.forward(minibatch)
         
-        if not self.train:
-            load_model_to_device(self, "cpu")
         return self.unpack_and_gather_tensor_dicts(minibatches) 
     
     @time_logger("update_actor")
+    @model_offloading_manager
     def update(self, tensor_dicts, step: int):
         
-        load_model_to_device(self, torch.cuda.current_device())
         if step < self.config.freeze_steps:
-            state_dict = get_state_dict(
+            return get_state_dict(
                 self.model, full_state_dict=False
             )
-            load_model_to_device(self, "cpu")
-            return state_dict
         batches = self.scatter_and_pack_tensor_dicts(tensor_dicts, True)
 
         self.model.train()
@@ -166,8 +162,6 @@ class Actor(Worker):
 
         rank0_log(metrics, step)
 
-        state_dict = get_state_dict(
+        return get_state_dict(
             self.model, full_state_dict=False
         )
-        load_model_to_device(self, "cpu")
-        return state_dict
