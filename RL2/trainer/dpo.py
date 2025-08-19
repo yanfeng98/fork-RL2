@@ -52,7 +52,7 @@ class DPOTrainer(Trainer):
         self.actor = Actor(config.actor, True)
         self.ref_actor = Actor(config.ref_actor, False)
         dataset = DPODataset(
-            config.data.path, self.actor.tokenizer, config.data.max_length
+            config.data, self.actor.tokenizer
         )
         self.train_dataloader = get_dataloader(
             dataset, config.data.batch_size

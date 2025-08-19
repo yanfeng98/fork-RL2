@@ -32,7 +32,8 @@ def get_dataloader(dataset, batch_size):
 def tokenize_messages(
     tokenizer,
     messages,
-    apply_chat_template=True
+    apply_chat_template=True,
+    max_length=None
 ):
 
     states, actions, action_mask = [], [], []
@@ -62,26 +63,33 @@ def tokenize_messages(
 
         states.extend(state)
 
+    states = states[:-1]
+    actions = actions[1:]
+    action_mask[1:]
+    if max_length is not None:
+        states = states[:max_length]
+        actions = actions[:max_length]
+        action_mask = action_mask[:max_length]
+
     return {
-        "states": torch.LongTensor(states[:-1]),
-        "actions": torch.LongTensor(actions[1:]),
-        "action_mask": torch.LongTensor(action_mask[1:]),
-        "eos_mask": torch.LongTensor((len(states) - 2) * [0] + [1]),
-        "position_ids": torch.arange(len(states) - 1)
+        "states": torch.LongTensor(states),
+        "actions": torch.LongTensor(actions),
+        "action_mask": torch.LongTensor(action_mask),
+        "eos_mask": torch.LongTensor((len(states) - 1) * [0] + [1]),
+        "position_ids": torch.arange(len(states))
     }
 
 class BaseDataset(Dataset):
     
     def __init__(
         self,
-        data_path,
-        tokenizer,
-        max_length
+        config,
+        tokenizer
     ):
 
-        self.dataset = load_dataset(data_path)
+        self.config = config
+        self.dataset = load_dataset(config.path)
         self.tokenizer = tokenizer
-        self.max_length = max_length
 
     def __len__(self):
         return len(self.dataset)

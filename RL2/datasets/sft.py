@@ -5,8 +5,12 @@ class SFTDataset(BaseDataset):
     def __getitem__(self, idx):
 
         messages = self.dataset[idx]["messages"]
-        tensor_dict = tokenize_messages(self.tokenizer, messages)
-        return {k: v[:self.max_length] for k, v in tensor_dict.items()}
+        return tokenize_messages(
+            self.tokenizer,
+            messages,
+            self.config.apply_chat_template,
+            self.config.max_length
+        )
     
     def collate_fn(self, batch):
         return list(batch)

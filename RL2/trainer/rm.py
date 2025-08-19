@@ -45,7 +45,7 @@ class RMTrainer(Trainer):
 
         self.critic = Critic(config.critic)
         dataset = RMDataset(
-            config.data.path, self.critic.tokenizer, config.data.max_length
+            config.data, self.critic.tokenizer
         )
         self.train_dataloader = get_dataloader(
             dataset, config.data.batch_size

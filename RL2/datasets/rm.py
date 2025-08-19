@@ -20,7 +20,7 @@ class RMDataset(BaseDataset):
 
         states = self.tokenizer.apply_chat_template(
             messages + [{"role": "assistant", "content": completion}]
-        )[:self.max_length]
+        )[:self.config.max_length]
         eos_mask = (len(states) - 1) * [0] + [1]
 
         return {
