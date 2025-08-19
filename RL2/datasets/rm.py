@@ -21,11 +21,12 @@ class RMDataset(BaseDataset):
         states = self.tokenizer.apply_chat_template(
             messages + [{"role": "assistant", "content": completion}]
         )[:self.max_length]
-        action_mask = (len(states) - 1) * [0] + [1]
+        eos_mask = (len(states) - 1) * [0] + [1]
 
         return {
             "states": torch.LongTensor(states),
-            "action_mask": torch.LongTensor(action_mask),
+            "action_mask": torch.LongTensor(eos_mask),
+            "eos_mask": torch.LongTensor(eos_mask),
             "position_ids": torch.arange(len(states))
         }
     

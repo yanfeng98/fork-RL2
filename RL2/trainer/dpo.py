@@ -12,7 +12,6 @@ from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.logging import progress_bar, time_logger, gather_and_log
 
-# TODO: add EOS
 @time_logger("update_actor")
 @data_manager(pair=True)
 def update(worker, minibatches, step):

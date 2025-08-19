@@ -66,6 +66,7 @@ def tokenize_messages(
         "states": torch.LongTensor(states[:-1]),
         "actions": torch.LongTensor(actions[1:]),
         "action_mask": torch.LongTensor(action_mask[1:]),
+        "eos_mask": torch.LongTensor((len(states) - 2) * [0] + [1]),
         "position_ids": torch.arange(len(states) - 1)
     }
 
