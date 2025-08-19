@@ -39,8 +39,8 @@ class Critic(Worker):
 
     @time_logger("compute_values")
     @model_offloading_manager
-    @data_manager(gather=True)
     @torch.no_grad()
+    @data_manager(gather=True)
     def compute_values(self, minibatches, step):
 
         self.model.eval()

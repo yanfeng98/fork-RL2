@@ -73,8 +73,8 @@ class Actor(Worker):
 
     @time_logger("compute_logps")
     @model_offloading_manager
-    @data_manager(gather=True)
     @torch.no_grad()
+    @data_manager(gather=True)
     def compute_logps(self, minibatches, step):
         prefix = "old" if self.train else "ref"
 
