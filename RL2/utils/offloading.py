@@ -31,7 +31,7 @@ def load_optimizer_to_device(worker, device):
 
 def model_offloading_manager(func):
 
-    @functools.wrap(func)
+    @functools.wraps(func)
     def func_with_model_offloading(worker, *args, **kwargs):
         load_model_to_device(worker, torch.cuda.current_device())
         output = func(worker, *args, **kwargs)
