@@ -11,11 +11,11 @@ class RLDataset(BaseDataset):
     def __getitem__(self, idx):
 
         ex = self.dataset[idx]
-        messages = ex["messages"]
+        prompt = ex["prompt"]
         answer = ex["answer"]
 
         return {
-            "messages": messages,
+            "prompt": prompt,
             "answer": answer
         }
 
