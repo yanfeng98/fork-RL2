@@ -79,7 +79,7 @@ class Critic(Worker):
                 mse = (values - minibatch["returns"]).pow(2)
                 clipped_mse = (clipped_values - minibatch["returns"]).pow(2)
                 losses = torch.max(mse, clipped_mse)
-                clip_ratios = (mse < clipped_mse)
+                clip_ratios = mse < clipped_mse
 
                 loss, clip_ratio = aggregate_values(
                     (losses, clip_ratios),

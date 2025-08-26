@@ -13,6 +13,7 @@ from sglang.srt.model_executor.model_runner import LocalSerializedTensor
 from tqdm.asyncio import tqdm
 import wandb
 from RL2.workers import Worker
+from RL2.datasets import get_tensor_dict
 from RL2.utils.comm import split_and_scatter_list, gather_and_concat_list
 from RL2.utils.logging import time_logger, gather_and_log
 
@@ -29,7 +30,7 @@ class Rollout(Worker):
             os.environ["SGLANG_BLOCK_NONZERO_RANK_CHILDREN"] = "0"
             self.llm = Engine(
                 model_path=config.model_name,
-                dtype="bfloat16",
+                dtype=config.dtype,
                 tp_size=self.device_mesh["tp"].size(),
                 mem_fraction_static=config.gpu_memory_utilization,
                 enable_memory_saver=True,
@@ -89,6 +90,7 @@ class Rollout(Worker):
         prompt, answer = ex["prompt"], ex["answer"]
 
         states = self.tokenizer.encode(prompt, add_special_tokens=False)
+        actions = len(states) * [0]
         action_mask = len(states) * [0]
         logps = len(states) * [0]
 
@@ -107,6 +109,7 @@ class Rollout(Worker):
             meta_info = response["meta_info"]
             logp, state, _ = map(list, zip(*meta_info["output_token_logprobs"]))
             states.extend(state)
+            actions.extend(state)
             action_mask.extend(len(state) * [1])
             logps.extend(logp)
 
@@ -128,20 +131,15 @@ class Rollout(Worker):
 
             state = self.tokenizer.encode(response, add_special_tokens=False)
             states.extend(state)
+            actions.extend(len(state) * [0])
             action_mask.extend(len(state) * [0])
             logps.extend(len(state) * [0])
 
         reward = self.env.reward_fn(prompt, answer)
 
-        td = {
-            "states": torch.LongTensor(states[:-1]),
-            "actions": torch.LongTensor(states[1:]),
-            "rewards": torch.FloatTensor((len(states) - 2)* [0] + [reward]),
-            "llm_logps": torch.FloatTensor(logps[1:]),
-            "position_ids": torch.arange(len(states) - 1),
-            "action_mask": torch.LongTensor(action_mask[1:]),
-            "sos_mask": torch.LongTensor([1] + (len(states) - 2) * [0]),
-        }
+        td = get_tensor_dict(states, actions, action_mask)
+        td["rewards"] = torch.FloatTensor((len(states) - 1) * [0] + [reward])
+        td["llm_logps"] = torch.FloatTensor(logps[1:])
 
         metric["n_turns"].append(turn + 1)
         metric["rewards"].append(reward)

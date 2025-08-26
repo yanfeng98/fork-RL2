@@ -29,6 +29,39 @@ def get_dataloader(dataset, batch_size):
         collate_fn=dataset.collate_fn
     )
 
+def get_tensor_dict(
+    states,
+    actions,
+    action_mask,
+    max_length=None,
+    rm=False
+):
+
+    if not rm:
+        states = states[:-1]
+        actions = actions[1:]
+        action_mask = action_mask[1:]
+
+    if max_length is not None:
+        states = states[:max_length]
+        actions = actions[:max_length]
+        action_mask = action_mask[:max_length]
+
+    tensor_dict = {
+        "states": torch.LongTensor(states),
+        "sos_mask": torch.LongTensor([1] + (len(states) - 1) * [0]),
+        "position_ids": torch.arange(len(states))
+    }
+    if rm:
+        tensor_dict["action_mask"] = torch.LongTensor(
+            (len(states) - 1) * [0] + [1]
+        )
+    else:
+        tensor_dict["actions"] = torch.LongTensor(actions)
+        tensor_dict["action_mask"] = torch.LongTensor(action_mask)
+
+    return tensor_dict
+
 class BaseDataset(Dataset):
     
     def __init__(self, config, tokenizer):
@@ -36,32 +69,6 @@ class BaseDataset(Dataset):
         self.config = config
         self.dataset = load_dataset(config.path)
         self.tokenizer = tokenizer
-
-    def get_tensor_dict(self, states, actions, action_mask, rm):
-
-        if not rm:
-            states = states[:-1]
-            actions = actions[1:]
-            action_mask = action_mask[1:]
-
-        states = states[:self.config.max_length]
-        actions = actions[:self.config.max_length]
-        action_mask = action_mask[:self.config.max_length]
-
-        tensor_dict = {
-            "states": torch.LongTensor(states),
-            "sos_mask": torch.LongTensor([1] + (len(states) - 1) * [0]),
-            "position_ids": torch.arange(len(states))
-        }
-        if rm:
-            tensor_dict["action_mask"] = torch.LongTensor(
-                (len(states) - 1) * [0] + [1]
-            )
-        else:
-            tensor_dict["actions"] = torch.LongTensor(actions)
-            tensor_dict["action_mask"] = torch.LongTensor(action_mask)
- 
-        return tensor_dict
 
     def tokenize_prompt_response(
         self, prompt, response, rm=False
@@ -79,8 +86,8 @@ class BaseDataset(Dataset):
         actions = len(states) * [0] + response
         action_mask = len(states) * [0] + len(response) * [1]
         
-        return self.get_tensor_dict(
-            states, actions, action_mask, rm
+        return get_tensor_dict(
+            states, actions, action_mask, self.config.max_length, rm
         )
 
     def tokenize_messages(self, messages, rm=False):
@@ -108,8 +115,8 @@ class BaseDataset(Dataset):
             action_mask.extend(len(state) * [is_this_turn_assistant])
             prev_text = text
 
-        return self.get_tensor_dict(
-            states, actions, action_mask, rm
+        return get_tensor_dict(
+            states, actions, action_mask, self.config.max_length, rm
         )
 
     def __len__(self):
