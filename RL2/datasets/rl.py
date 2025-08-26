@@ -1,13 +1,7 @@
 import copy
-from RL2.datasets.base import BaseDataset, load_dataset
+from RL2.datasets.base import BaseDataset
 
 class RLDataset(BaseDataset):
-    
-    def __init__(self, config, tokenizer):
-
-        self.config = config
-        self.tokenizer = tokenizer
-        self.dataset = load_dataset(config.path)
 
     def __getitem__(self, idx):
 

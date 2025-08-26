@@ -56,7 +56,8 @@ class RMTrainer(Trainer):
 
         step = load_ckpt(self, (self.critic,))
         for epoch in range(
-            step // len(self.train_dataloader), self.config.trainer.n_epochs
+            step // len(self.train_dataloader),
+            self.config.trainer.n_epochs
         ):
             for tensor_dicts in tqdm(
                 self.train_dataloader,

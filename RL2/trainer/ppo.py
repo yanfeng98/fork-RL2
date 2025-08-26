@@ -91,7 +91,8 @@ class PPOTrainer(Trainer):
             else (self.actor,)
         )
         for epoch in range(
-            step // len(self.train_dataloader), self.config.trainer.n_epochs
+            step // len(self.train_dataloader),
+            self.config.trainer.n_epochs
         ):
             for data_list in tqdm(
                 self.train_dataloader,
@@ -103,12 +104,12 @@ class PPOTrainer(Trainer):
 
                 tensor_dicts = self.rollout(data_list, True, step)
 
+                if self.config.actor.kl.coef > 0 or self.config.actor.update_per_rollout > 1:
+                    tensor_dicts = self.actor.compute_logps(tensor_dicts, step)
                 if self.config.actor.kl.coef > 0:
                     tensor_dicts = self.ref_actor.compute_logps(tensor_dicts, step)
                 if self.config.adv.estimator == "gae":
                     tensor_dicts = self.critic.compute_values(tensor_dicts, step)
-                if self.config.actor.kl.coef > 0 or self.config.actor.update_per_rollout > 1:
-                    tensor_dicts = self.actor.compute_logps(tensor_dicts, step)
 
                 if dist.get_rank() == 0:
                     if self.config.actor.kl.coef > 0:
