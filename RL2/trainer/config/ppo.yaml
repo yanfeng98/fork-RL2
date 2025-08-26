@@ -2,7 +2,7 @@ train_data:
   path: null
   apply_chat_template: true
   prompts_per_rollout: null
-  response_per_rollout: null
+  responses_per_prompt: null
 
 test_data:
   path: null

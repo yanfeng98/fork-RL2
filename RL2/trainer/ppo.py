@@ -21,16 +21,15 @@ class PPOTrainer(Trainer):
         super().__init__(config)
 
         self.actor = Actor(config.actor, True)
+        self.train_dataloader = self.get_dataloader(True)
+        self.test_dataloader = self.get_dataloader(False)
         self.actor.scheduler = self.prepare_scheduler(self.actor)
         if config.actor.kl.coef > 0:
             self.ref_actor = Actor(config.ref_actor, False)
         if config.adv.estimator == "gae":
             self.critic = Critic(config.critic)
             self.critic.scheduler = self.prepare_scheduler(self.critic)
-        self.rollout = Rollout(config.rollout)
-
-        self.train_dataloader = self.get_dataloader(True)
-        self.test_dataloader = self.get_dataloader(False)
+        self.rollout = Rollout(config.rollout)    
 
     def get_dataloader(self, train: bool):
 
@@ -76,7 +75,7 @@ class PPOTrainer(Trainer):
         elif self.config.adv.estimator == "reinforce":
             compute_reinforce_adv(
                 tensor_dicts,
-                self.config.data.responses_per_prompt,
+                self.config.train_data.responses_per_prompt,
                 self.config.adv.global_norm,
                 self.config.adv.norm_var
             )
