@@ -140,7 +140,7 @@ class Rollout(Worker):
             "llm_logps": torch.FloatTensor(logps[1:]),
             "position_ids": torch.arange(len(states) - 1),
             "action_mask": torch.LongTensor(action_mask[1:]),
-            "eos_mask": torch.LongTensor((len(states) - 2) * [0] + [1]),
+            "sos_mask": torch.LongTensor([1] + (len(states) - 2) * [0]),
         }
 
         metric["n_turns"].append(turn + 1)

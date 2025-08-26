@@ -64,7 +64,7 @@ class Critic(Worker):
 
             total_actions, total_sequences = count_total(
                 batch,
-                ("action_mask", "eos_mask"),
+                ("action_mask", "sos_mask"),
                 self.device_mesh["dp"]
             )
             metric = defaultdict(list)

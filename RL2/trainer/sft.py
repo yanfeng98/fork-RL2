@@ -17,7 +17,7 @@ def update(worker, minibatches, step):
 
     total_actions, total_sequences = count_total(
         minibatches,
-        ("action_mask", "eos_mask"),
+        ("action_mask", "sos_mask"),
         worker.device_mesh["dp"]
     )
     metrics = defaultdict(list)
