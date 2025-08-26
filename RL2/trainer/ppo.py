@@ -20,9 +20,6 @@ class PPOTrainer(Trainer):
     def __init__(self, config):
         super().__init__(config)
 
-        self.train_dataloader = self.get_dataloader(True)
-        self.test_dataloader = self.get_dataloader(False)
-
         self.actor = Actor(config.actor, True)
         self.actor.scheduler = self.prepare_scheduler(self.actor)
         if config.actor.kl.coef > 0:
@@ -32,18 +29,20 @@ class PPOTrainer(Trainer):
             self.critic.scheduler = self.prepare_scheduler(self.critic)
         self.rollout = Rollout(config.rollout)
 
+        self.train_dataloader = self.get_dataloader(True)
+        self.test_dataloader = self.get_dataloader(False)
+
     def get_dataloader(self, train: bool):
 
         dataset = RLDataset(
-            self.config.data.train_data_path
-            if train else self.config.data.test_data_path,
-            self.config.data.responses_per_prompt
-            if train else 1
+            self.config.train_data
+            if train else self.config.test_data,
+            self.actor.tokenizer
         )
 
         return get_dataloader(
             dataset,
-            self.config.data.prompts_per_rollout
+            self.config.train_data.prompts_per_rollout
             if train else len(dataset)
         )
     
