@@ -163,7 +163,9 @@ class Rollout(Worker):
             outputs = loop.run_until_complete(
                 tqdm.gather(
                     *(self.rollout(ex, train) for ex in data_list),
-                    desc="Rollout", position=1, leave=False,
+                    desc="Rollout",
+                    position=1,
+                    leave=False,
                     disable=(dist.get_rank() != 0)
                 )
             )
@@ -195,18 +197,20 @@ class Rollout(Worker):
             )
 
             if dist.get_rank() == 0:
+
                 if not self.config.dynamic_filtering:
                     return tensor_dicts
 
+                group_size = self.config.responses_per_prompt
                 rewards = torch.FloatTensor(
                     [td["rewards"].sum() for td in tensor_dicts]
-                ).view(-1, self.config.responses_per_prompt)
+                ).view(-1, group_size)
                 are_filtered = (rewards.std(-1) == 0).tolist()
                 wandb.log({
                     "dynamic_filtering_ratio": sum(are_filtered) / len(are_filtered)
                 }, step=step)
                 return sum([
-                    tensor_dicts[idx * self.config.responses_per_prompt:(idx + 1) * self.config.responses_per_prompt]
+                    tensor_dicts[idx * group_size:(idx + 1) * group_size]
                     for idx, is_filtered in enumerate(are_filtered)
                     if not is_filtered
                 ], [])
