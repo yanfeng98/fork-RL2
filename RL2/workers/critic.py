@@ -83,8 +83,8 @@ class Critic(Worker):
 
                 loss, clip_ratio = aggregate_values(
                     (losses, clip_ratios),
-                    minibatch,
-                    self.config.agg_mode,
+                    minibatch["action_mask"],
+                    self.config.avg_level,
                     total_actions,
                     total_sequences
                 )
