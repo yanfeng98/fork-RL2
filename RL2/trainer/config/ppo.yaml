@@ -7,7 +7,7 @@ train_data:
 test_data:
   path: null
   apply_chat_template: true
-  response_per_rollout: 1
+  responses_per_prompt: 1
   
 actor:
   model_name: null
@@ -58,6 +58,7 @@ rollout:
   max_turns: 1
   env_path: null
   dynamic_filtering: true
+  base_port: 30000
 
 ref_actor:
   model_name: ${actor.model_name}

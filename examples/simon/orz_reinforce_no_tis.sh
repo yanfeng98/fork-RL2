@@ -1,10 +1,13 @@
+export CUDA_VISIBLE_DEVICES=0,1,2,3
 torchrun \
-    --nproc_per_node=8 \
+    --master_port=29501 \
+    --nproc_per_node=4 \
     -m RL2.trainer.ppo \
     train_data.path=Chenmien/OpenReasonerZero \
     train_data.prompts_per_rollout=128 \
     train_data.responses_per_prompt=64 \
     test_data.path=Chenmien/OlympiadBench \
+    test_data.responses_per_prompt=64 \
     actor.model_name=Qwen/Qwen2.5-3B \
     actor.sp_size=2 \
     actor.max_length_per_device=8192 \

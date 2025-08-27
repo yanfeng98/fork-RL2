@@ -28,13 +28,14 @@ class Rollout(Worker):
             self.prepare_environment()
 
             os.environ["SGLANG_BLOCK_NONZERO_RANK_CHILDREN"] = "0"
+            os.environ["SUPPORT_CUTLASS_BLOCK_FP8"] = "1"
             self.llm = Engine(
                 model_path=config.model_name,
                 dtype=config.dtype,
                 tp_size=self.device_mesh["tp"].size(),
                 mem_fraction_static=config.gpu_memory_utilization,
                 enable_memory_saver=True,
-                port=30000 + dist.get_rank()
+                port=config.base_port + dist.get_rank()
             )
         
             self.train_sampling_params = OmegaConf.to_container(
