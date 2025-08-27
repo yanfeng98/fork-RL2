@@ -220,6 +220,7 @@ class Rollout(Worker):
     def update(self, state_dict, step):
 
         torch.cuda.empty_cache()
+        dist.barrier()
         # or llm.resume_memory_occupation() may OOM
         if self.device_mesh["tp"].get_local_rank() == 0:
             self.llm.resume_memory_occupation()

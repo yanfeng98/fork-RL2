@@ -7,7 +7,6 @@ from RL2.trainer import Trainer
 from RL2.datasets import DPODataset, get_dataloader
 from RL2.workers import Actor
 from RL2.utils.sequences import data_manager, count_total
-from RL2.utils.functions import aggregate_values
 from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.logging import progress_bar, time_logger, gather_and_log
@@ -24,11 +23,9 @@ def update(worker, minibatches, step):
         minibatches, desc="Update actor"
     ):
         logps = worker.forward(minibatch)
-        chosen_rewards, rejected_rewards = aggregate_values(
-            worker.config.beta * (logps - minibatch["ref_logps"]),
-            minibatch,
-            "seq_token_sum"
-        ).view(-1, 2).T
+        chosen_rewards, rejected_rewards = worker.config.beta * (
+            logps - minibatch["ref_logps"]
+        ).sum(-1).view(-1, 2).T
         reward_margins = chosen_rewards - rejected_rewards
         loss = - F.logsigmoid(reward_margins).sum() / total_pairs
         worker.backward(loss)

@@ -133,8 +133,8 @@ class Actor(Worker):
 
                 loss, clip_ratio, entropy = aggregate_values(
                     (losses, clip_ratios, entropy),
-                    minibatch,
-                    self.config.agg_mode,
+                    minibatch["action_mask"],
+                    self.config.avg_level,
                     total_actions,
                     total_sequences
                 )

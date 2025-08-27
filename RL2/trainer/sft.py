@@ -27,8 +27,8 @@ def update(worker, minibatches, step):
         logps = worker.forward(minibatch)
         loss = aggregate_values(
             - logps,
-            minibatch,
-            worker.config.agg_mode,
+            minibatch["action_mask"],
+            worker.config.avg_level,
             total_actions,
             total_sequences
         )
