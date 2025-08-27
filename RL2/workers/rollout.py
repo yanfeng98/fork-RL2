@@ -28,7 +28,6 @@ class Rollout(Worker):
             self.prepare_environment()
 
             os.environ["SGLANG_BLOCK_NONZERO_RANK_CHILDREN"] = "0"
-            os.environ["SUPPORT_CUTLASS_BLOCK_FP8"] = "1"
             self.llm = Engine(
                 model_path=config.model_name,
                 dtype=config.dtype,
