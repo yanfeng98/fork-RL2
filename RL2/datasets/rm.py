@@ -24,4 +24,6 @@ class RMDataset(BaseDataset):
             )
     
     def collate_fn(self, batch):
-        return sum([list(ex) for ex in batch], [])
+        return super().collate_fn(
+            sum([list(b) for b in batch], [])
+        )

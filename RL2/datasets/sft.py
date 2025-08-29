@@ -11,6 +11,3 @@ class SFTDataset(BaseDataset):
             return self.tokenize_prompt_response(
                 ex["prompt"], ex["response"]
             )
-    
-    def collate_fn(self, batch):
-        return list(batch)

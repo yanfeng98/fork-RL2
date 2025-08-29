@@ -1,7 +1,9 @@
+from typing import Sequence, Dict
 import os
 import datasets
 import torch
 from torch.utils.data import Dataset
+from torch.nn.utils.rnn import pad_sequence
 from torchdata.stateful_dataloader import StatefulDataLoader
 
 # TODO (P1): support concatnating multiple datasets
@@ -121,3 +123,14 @@ class BaseDataset(Dataset):
 
     def __len__(self):
         return len(self.dataset)
+    
+    def collate_fn(
+        self,
+        batch: Sequence[Dict[str, torch.Tensor]]
+    ) -> Dict[str, torch.Tensor]:
+        return {
+            k: pad_sequence(
+                [b[k] for b in batch], True
+            )
+            for k in batch[0].keys()
+        }
