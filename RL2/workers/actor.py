@@ -129,7 +129,7 @@ class Actor(Worker):
                     # Truncated Importance Sampling between inference engine and actor (https://fengyao.notion.site/off-policy-rl)
                     tis = torch.exp(
                         logps - minibatch["llm_logps"]
-                    ).clamp(max=self.config.tis_coef)
+                    ).clamp(max=self.config.tis_coef).detach()
                     losses *= tis
                     
                 loss, clip_ratio, entropy = aggregate_values(
