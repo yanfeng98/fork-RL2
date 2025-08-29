@@ -245,4 +245,5 @@ class Rollout(Worker):
                     )],
                     flush_cache=(idx == len(state_dict) - 1)
                 )
+        state_dict.clear()
         dist.barrier()

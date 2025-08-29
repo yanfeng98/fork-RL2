@@ -81,8 +81,8 @@ def aggregate_values(
     tensor,
     action_mask,
     avg_level,
-    total_actions=None,
-    total_sequences=None
+    total_actions,
+    total_sequences
 ):
     
     if isinstance(tensor, tuple):
