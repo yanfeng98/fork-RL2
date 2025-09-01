@@ -16,7 +16,7 @@ from RL2.utils.logging import progress_bar, time_logger, gather_and_log
 def update(worker, minibatches, step):
 
     total_pairs = count_total(
-        minibatches, "sos_mask", worker.device_mesh["dp"]
+        minibatches, "eos_mask", worker.device_mesh["dp"]
     ) // 2
     metrics = defaultdict(list)
     for minibatch in progress_bar(

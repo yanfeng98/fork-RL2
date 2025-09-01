@@ -105,7 +105,7 @@ class Actor(Worker):
             
             total_actions, total_sequences = count_total(
                 batch,
-                ("action_mask", "sos_mask"),
+                ("action_mask", "eos_mask"),
                 self.device_mesh["dp"]
             )
             metric = defaultdict(list)
