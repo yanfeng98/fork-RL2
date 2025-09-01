@@ -13,7 +13,7 @@ from sglang.srt.model_executor.model_runner import LocalSerializedTensor
 from tqdm.asyncio import tqdm
 import wandb
 from RL2.workers import Worker
-from RL2.datasets import get_tensor_dict
+from RL2.datasets import get_tensor_dict, pack_tensor_dicts
 from RL2.utils.comm import split_and_scatter_list, gather_and_concat_list
 from RL2.utils.logging import time_logger, gather_and_log
 
@@ -178,7 +178,7 @@ class Rollout(Worker):
         if self.device_mesh["tp"].get_local_rank() == 0:
 
             tensor_dicts, prompts, metrics = map(list, zip(*outputs))
-
+            
             if dist.get_rank() == 0:
                 tqdm.write(prompts[0])
 
@@ -198,22 +198,20 @@ class Rollout(Worker):
 
             if dist.get_rank() == 0:
 
+                tensor_dict = pack_tensor_dicts(tensor_dicts)
                 if not self.config.dynamic_filtering:
-                    return tensor_dicts
+                    return tensor_dict
 
                 group_size = self.config.responses_per_prompt
-                rewards = torch.FloatTensor(
-                    [td["rewards"].sum() for td in tensor_dicts]
-                ).view(-1, group_size)
+                rewards = tensor_dict["rewards"].sum(-1).view(-1, group_size)
                 are_filtered = (rewards.std(-1) == 0).tolist()
                 wandb.log({
                     "dynamic_filtering_ratio": sum(are_filtered) / len(are_filtered)
                 }, step=step)
-                return sum([
-                    tensor_dicts[idx * group_size:(idx + 1) * group_size]
-                    for idx, is_filtered in enumerate(are_filtered)
-                    if not is_filtered
-                ], [])
+                return {
+                    k: v[~are_filtered]
+                    for k, v in tensor_dict.items()
+                }
         
     @time_logger("update_rollout")
     def update(self, state_dict, step):

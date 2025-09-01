@@ -1,4 +1,4 @@
-from RL2.datasets import BaseDataset
+from RL2.datasets import BaseDataset, pack_tensor_dicts
 
 class SFTDataset(BaseDataset):
     
@@ -11,3 +11,6 @@ class SFTDataset(BaseDataset):
             return self.tokenize_prompt_response(
                 ex["prompt"], ex["response"]
             )
+        
+    def collate_fn(self, tensor_dicts):
+        return pack_tensor_dicts(tensor_dicts)

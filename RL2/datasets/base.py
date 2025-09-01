@@ -1,4 +1,3 @@
-from typing import Sequence, Dict
 import os
 import datasets
 import torch
@@ -64,6 +63,15 @@ def get_tensor_dict(
 
     return tensor_dict
 
+def pack_tensor_dicts(tensor_dicts):
+    return {
+        k: pad_sequence(
+            [tensor_dict[k] for tensor_dict in tensor_dicts], True
+        )
+        for k in tensor_dicts[0].keys()
+    }
+
+
 class BaseDataset(Dataset):
     
     def __init__(self, config, tokenizer):
@@ -123,14 +131,3 @@ class BaseDataset(Dataset):
 
     def __len__(self):
         return len(self.dataset)
-    
-    def collate_fn(
-        self,
-        batch: Sequence[Dict[str, torch.Tensor]]
-    ) -> Dict[str, torch.Tensor]:
-        return {
-            k: pad_sequence(
-                [b[k] for b in batch], True
-            )
-            for k in batch[0].keys()
-        }

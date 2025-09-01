@@ -1,4 +1,4 @@
-from RL2.datasets import BaseDataset
+from RL2.datasets import BaseDataset, pack_tensor_dicts
 
 
 class RMDataset(BaseDataset):
@@ -24,6 +24,6 @@ class RMDataset(BaseDataset):
             )
     
     def collate_fn(self, batch):
-        return super().collate_fn(
+        return pack_tensor_dicts(
             sum([list(b) for b in batch], [])
         )
