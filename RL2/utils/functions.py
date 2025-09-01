@@ -1,6 +1,5 @@
 import torch
 import torch.distributed as dist
-from RL2.utils.sequences import position_ids_to_cu_seqlens
 
 def differentiable_all_reduce(tensor, device_mesh):
 
