@@ -204,12 +204,17 @@ class Rollout(Worker):
 
                 group_size = self.config.responses_per_prompt
                 rewards = tensor_dict["rewards"].sum(-1).view(-1, group_size)
-                are_filtered = (rewards.std(-1) == 0).tolist()
+                are_filtered = rewards.std(-1) == 0
                 wandb.log({
-                    "dynamic_filtering_ratio": sum(are_filtered) / len(are_filtered)
+                    "dynamic_filtering_ratio": are_filtered.float().mean().item()
                 }, step=step)
                 return {
-                    k: v[~are_filtered]
+                    k:(
+                        v
+                        .view(-1, group_size, v.shape[-1])
+                        [~are_filtered]
+                        .view(-1, v.shape[-1])
+                    )
                     for k, v in tensor_dict.items()
                 }
         
