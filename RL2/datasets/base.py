@@ -51,7 +51,7 @@ def get_tensor_dict(
 
     tensor_dict = {
         "states": torch.LongTensor(states),
-        "sos_mask": torch.LongTensor([1] + (len(states) - 1) * [0]),
+        "eos_mask": torch.LongTensor((len(states) - 1) * [0] + [1]),
         "position_ids": torch.arange(len(states))
     }
     if rm:
