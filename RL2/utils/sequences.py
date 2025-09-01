@@ -153,7 +153,14 @@ def tensor_dict_to_minibatches(
     ]
 
 def minibatches_to_tensor_dict(worker, minibatches):
-        
+    
+    minibatches = [
+        {
+            k: v.to("cpu")
+            for k, v in minibatch.items()
+        }
+        for minibatch in minibatches
+    ]
     minibatches = gather_and_concat_list(
         minibatches, worker.device_mesh["dp"]
     )
@@ -175,7 +182,6 @@ def minibatches_to_tensor_dict(worker, minibatches):
         }
 
         if PAD_SEQUENCES > 0:
-            # TODO: remove if no eos_mask
             tensor_dict = {
                 k: v[:-PAD_SEQUENCES]
                 for k, v in tensor_dict.items()
