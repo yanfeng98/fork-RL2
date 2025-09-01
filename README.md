@@ -24,7 +24,7 @@ RL2 is a production-ready library! Check our wandb report on [OpenThoughts](http
 
 ### Installation
 
-```
+```bash
 git clone https://github.com/ChenmienTan/RL2.git
 cd RL2
 pip install -e .
@@ -35,7 +35,7 @@ pip install -e .
 
 Hugging Face dataset and various file types, *i.e.*, JSON, JSONL, CSV, Parquet, and Arrow, are accepted.
 The data for SFT should be in the following format
-```
+```json
 [
     {
         "messages": [
@@ -46,7 +46,7 @@ The data for SFT should be in the following format
 ]
 ```
 For RM and DPO
-```
+```json
 [
     {
         "messages": [
@@ -58,7 +58,7 @@ For RM and DPO
 ]
 ```
 For PPO
-```
+```json
 [
     {
         "messages": [
@@ -79,7 +79,7 @@ These trajectories will be evenly used for `update_per_rollout` updates.
 The reward function should be in the follwing format.
 Specify the path to the Python script including the function via `actor.rollout.env_path`.
 
-```
+```python
 def reward_fn(messages, answer):
     pred = parse_answer(messages[-1]["content"])
     return float(is_equivalent(pred, answer))
@@ -94,7 +94,7 @@ In this case, you should set `rollout.max_turns > 1` and include function `inter
 You should parse the called functions in past messages and return new messages including the results.
 An empty list indicates no function is called.
 
-```
+```python
 def interact(messages):
     queries = parse_query(messages[-1]["content])
     results = [search(query) for query in queries]
@@ -108,14 +108,14 @@ For base models, you may specify `rollout.apply_chat_template=false` so that the
 ### Training
 
 Use `torchrun` to launch the training. For example, for single node
-```
+```bash
 torchrun \
     --nproc_per_node=<number of GPUs> \
     -m RL2.trainer.ppo \
     <args>
 ```
 For multi nodes
-```
+```bash
 torchrun \
     --nnodes=<number of nodes> \
     --node_rank=<rank of node> \
@@ -161,7 +161,7 @@ We also thank [OpenRLHF](https://github.com/OpenRLHF/OpenRLHF) and [veRL](https:
 
 ## Citation
 If you find this library useful, please cite in the following format
-```
+```latex
 @misc{Tan2025RL2,
     author={Chenmien Tan and Simon Yu and Lanbo Lin and Ze Zhang and Yuanwu Xu and Chenhao Jiang and Tianyuan Yang and Sicong Xie and Guannan Zhang},
     title={RL2: Ray Less Reinforcement Learning},
