@@ -66,7 +66,7 @@ def _flash_attention_forward(
         cu_seqlens_k=DATA_PARAMS["cu_seqlens_k"],
         max_seqlen_q=DATA_PARAMS["max_seqlen_q"],
         max_seqlen_k=DATA_PARAMS["max_seqlen_k"],
-        heads_k_stride=DATA_PARAMS["heads_k_stride"],
+        heads_k_stride=1,
         local_k_slice=DATA_PARAMS["local_k_slice"],
         dropout_p=dropout,
         softmax_scale=softmax_scale,
@@ -135,7 +135,6 @@ def sequence_parallelism_manager(func):
             "cu_seqlens_k": cu_seqlens_k,
             "max_seqlen_q": max_seqlen_q,
             "max_seqlen_k": max_seqlen_k,
-            "heads_k_stride": worker.config.heads_k_stride,
             "local_k_slice": local_k_slice,
         })
         
@@ -166,10 +165,10 @@ def sequence_parallelism_manager(func):
             tensor = torch.cat(tensors, -1).squeeze(0)
 
             outputs = torch.zeros(shape, device=torch.cuda.current_device())
-            for output, start_idx, end_idx in zip(
-                outputs, cu_seqlens[:-1], cu_seqlens[1:]
+            for row, start_idx, end_idx in zip(
+                range(shape[0]), cu_seqlens[:-1], cu_seqlens[1:]
             ):
-                output[:end_idx - start_idx] = tensor[start_idx:end_idx]
+                outputs[row, :end_idx - start_idx] = tensor[start_idx:end_idx]
 
             return outputs
 
