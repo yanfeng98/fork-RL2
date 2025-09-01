@@ -63,15 +63,15 @@ class DPOTrainer(Trainer):
             step // len(self.train_dataloader),
             self.config.trainer.n_epochs
         ):
-            for tensor_dicts in tqdm(
+            for tensor_dict in tqdm(
                 self.train_dataloader,
                 desc=f"Epoch {epoch + 1}",
                 disable=(dist.get_rank() != 0),
                 initial=step % len(self.train_dataloader)
             ):
                 step += 1
-                tensor_dicts = self.ref_actor.compute_logps(tensor_dicts, step)
-                update(self.actor, tensor_dicts, step)
+                tensor_dict = self.ref_actor.compute_logps(tensor_dict, step)
+                update(self.actor, tensor_dict, step)
                 save_ckpt(self, (self.actor,), step)
         save_model(self, self.actor)
 
