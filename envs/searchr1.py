@@ -2,10 +2,10 @@ import re
 import string
 import aiohttp
 
-async def interact(response):
+async def step(texts):
 
     match = re.search(
-        r"<(search|answer)>(.*?)</\1>", response, re.DOTALL
+        r"<(search|answer)>(.*?)</\1>", texts[-1], re.DOTALL
     )
     if match is None:
         return "\nMy previous action is invalid. \
@@ -40,10 +40,10 @@ def normalize_answer(s):
 
     return white_space_fix(remove_articles(remove_punc(lower(s))))
 
-def reward_fn(response, answer):
+def reward_fn(texts, answer):
 
     preds = re.findall(
-        r"<answer>(.*?)</answer>", response, re.DOTALL
+        r"<answer>(.*?)</answer>", texts[-1], re.DOTALL
     )
     if len(preds) == 0:
         return False
