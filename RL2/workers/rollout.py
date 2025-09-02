@@ -1,5 +1,6 @@
 from omegaconf import OmegaConf
 import os
+import json
 import asyncio
 import importlib
 from collections import defaultdict
@@ -87,9 +88,9 @@ class Rollout(Worker):
         
     async def rollout(self, ex, train):
 
-        text, answer = ex["prompt"], ex["answer"]
+        texts, answer = [ex["prompt"]], ex["answer"]
 
-        states = self.tokenizer.encode(text, add_special_tokens=False)
+        states = self.tokenizer.encode(ex["prompt"], add_special_tokens=False)
         actions = len(states) * [0]
         action_mask = len(states) * [0]
         logps = len(states) * [0]
@@ -104,7 +105,7 @@ class Rollout(Worker):
                 return_logprob=True
             )
 
-            text += response["text"]
+            texts.append(response["text"])
 
             meta_info = response["meta_info"]
             logp, state, _ = map(list, zip(*meta_info["output_token_logprobs"]))
@@ -122,12 +123,12 @@ class Rollout(Worker):
             if turn + 1 == self.config.max_turns:
                 break
 
-            env_response = await self.env.interact(response["text"])
+            env_response = await self.env.step(texts)
             # Terminate if no tool is invoked.
             if len(env_response) == 0:
                 break
 
-            text += env_response
+            texts.append(env_response)
 
             state = self.tokenizer.encode(env_response, add_special_tokens=False)
             states.extend(state)
@@ -135,7 +136,7 @@ class Rollout(Worker):
             action_mask.extend(len(state) * [0])
             logps.extend(len(state) * [0])
 
-        reward = self.env.reward_fn(response["text"], answer)
+        reward = self.env.reward_fn(texts, answer)
 
         td = get_tensor_dict(states, actions, action_mask)
         td["rewards"] = torch.FloatTensor((len(states) - 2) * [0] + [reward])
@@ -145,7 +146,7 @@ class Rollout(Worker):
         metric["rewards"].append(reward)
         metric["sequence_length"].append(len(td["states"]))
 
-        return td, text, metric
+        return td, texts, metric
 
     @time_logger("rollout")
     def __call__(self, data_list, train: bool, step: int):
@@ -177,10 +178,10 @@ class Rollout(Worker):
 
         if self.device_mesh["tp"].get_local_rank() == 0:
 
-            tensor_dicts, texts, metrics = map(list, zip(*outputs))
+            tensor_dicts, all_texts, metrics = map(list, zip(*outputs))
             
             if dist.get_rank() == 0:
-                tqdm.write(texts[0])
+                tqdm.write(json.dumps(all_texts[0], indent=4))
 
             suffix = "train" if train else "test"
             metrics = {
