@@ -1,8 +1,8 @@
 import re
 import string
-import requests
+import aiohttp
 
-def interact(response):
+async def interact(response):
 
     match = re.search(
         r"<(search|answer)>(.*?)</\1>", response, re.DOTALL
@@ -15,11 +15,12 @@ def interact(response):
         return ""
     
     query = match.group(2)
-    result = requests.post(
-        "http://localhost:8000/search", json={
-            "query": query
-        }
-    ).json()
+    async with aiohttp.ClientSession() as session:
+        async with session.post(
+            "http://localhost:8000/search",
+            json={"query": query}
+        ) as response:
+            result = await response.json()
     return f"\n\n<information>{result.strip()}</information>\n\n"
 
 def normalize_answer(s):

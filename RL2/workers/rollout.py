@@ -122,7 +122,7 @@ class Rollout(Worker):
             if turn + 1 == self.config.max_turns:
                 break
 
-            env_response = self.env.interact(response["text"])
+            env_response = await self.env.interact(response["text"])
             # Terminate if no tool is invoked.
             if len(env_response) == 0:
                 break
