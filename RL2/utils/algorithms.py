@@ -84,8 +84,8 @@ def compute_reinforce_adv(
         baseline = rewards.mean()
         std = rewards.std()
     else:
-        baseline = rewards.mean(-1).unsqueeze(-1)
-        std = rewards.std(-1).unsqueeze(-1)
+        baseline = rewards.mean(-1, keepdim=True)
+        std = rewards.std(-1, keepdim=True)
 
     advantages = rewards - baseline
     if norm_var:
