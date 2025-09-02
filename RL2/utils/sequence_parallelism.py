@@ -164,13 +164,13 @@ def sequence_parallelism_manager(func):
             tensors[rank] = output # necessary to retain grad
             tensor = torch.cat(tensors, -1).squeeze(0)
 
-            outputs = torch.zeros(shape, device=torch.cuda.current_device())
+            output = torch.zeros(shape, device=torch.cuda.current_device())
             for row, start_idx, end_idx in zip(
                 range(shape[0]), cu_seqlens[:-1], cu_seqlens[1:]
             ):
-                outputs[row, :end_idx - start_idx] = tensor[start_idx:end_idx]
+                output[row, :end_idx - start_idx] = tensor[start_idx:end_idx]
 
-            return outputs
+            return output
 
         return postprocess(output)
     
