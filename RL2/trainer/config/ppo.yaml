@@ -44,7 +44,7 @@ rollout:
   model_name: ${actor.model_name}
   dtype: bfloat16
   tp_size: 1
-  gpu_memory_utilization: 0.7
+  gpu_memory_utilization: 0.6
   responses_per_prompt: ${train_data.responses_per_prompt}
   train_sampling_params:
     temperature: 1.0
