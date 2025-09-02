@@ -87,9 +87,9 @@ class Rollout(Worker):
         
     async def rollout(self, ex, train):
 
-        prompt, answer = ex["prompt"], ex["answer"]
+        text, answer = ex["prompt"], ex["answer"]
 
-        states = self.tokenizer.encode(prompt, add_special_tokens=False)
+        states = self.tokenizer.encode(text, add_special_tokens=False)
         actions = len(states) * [0]
         action_mask = len(states) * [0]
         logps = len(states) * [0]
@@ -104,7 +104,7 @@ class Rollout(Worker):
                 return_logprob=True
             )
 
-            prompt += response["text"]
+            text += response["text"]
 
             meta_info = response["meta_info"]
             logp, state, _ = map(list, zip(*meta_info["output_token_logprobs"]))
@@ -122,20 +122,20 @@ class Rollout(Worker):
             if turn + 1 == self.config.max_turns:
                 break
 
-            response = self.env.interact(prompt)
+            env_response = self.env.interact(response["text"])
             # Terminate if no tool is invoked.
-            if len(response) == 0:
+            if len(env_response) == 0:
                 break
 
-            prompt += response
+            text += env_response
 
-            state = self.tokenizer.encode(response, add_special_tokens=False)
+            state = self.tokenizer.encode(env_response, add_special_tokens=False)
             states.extend(state)
             actions.extend(len(state) * [0])
             action_mask.extend(len(state) * [0])
             logps.extend(len(state) * [0])
 
-        reward = self.env.reward_fn(prompt, answer)
+        reward = self.env.reward_fn(response["text"], answer)
 
         td = get_tensor_dict(states, actions, action_mask)
         td["rewards"] = torch.FloatTensor((len(states) - 1) * [0] + [reward])
@@ -145,7 +145,7 @@ class Rollout(Worker):
         metric["rewards"].append(reward)
         metric["sequence_length"].append(len(td["states"]))
 
-        return td, prompt, metric
+        return td, text, metric
 
     @time_logger("rollout")
     def __call__(self, data_list, train: bool, step: int):
@@ -177,10 +177,10 @@ class Rollout(Worker):
 
         if self.device_mesh["tp"].get_local_rank() == 0:
 
-            tensor_dicts, prompts, metrics = map(list, zip(*outputs))
+            tensor_dicts, texts, metrics = map(list, zip(*outputs))
             
             if dist.get_rank() == 0:
-                tqdm.write(prompts[0])
+                tqdm.write(texts[0])
 
             suffix = "train" if train else "test"
             metrics = {
