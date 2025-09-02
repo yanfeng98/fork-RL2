@@ -138,7 +138,7 @@ class Rollout(Worker):
         reward = self.env.reward_fn(response["text"], answer)
 
         td = get_tensor_dict(states, actions, action_mask)
-        td["rewards"] = torch.FloatTensor((len(states) - 1) * [0] + [reward])
+        td["rewards"] = torch.FloatTensor((len(states) - 2) * [0] + [reward])
         td["llm_logps"] = torch.FloatTensor(logps[1:])
 
         metric["n_turns"].append(turn + 1)
