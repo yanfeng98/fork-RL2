@@ -7,7 +7,6 @@ from RL2.trainer import Trainer
 from RL2.datasets import RMDataset, get_dataloader
 from RL2.workers import Critic
 from RL2.utils.sequences import data_manager, count_total
-from RL2.utils.functions import aggregate_values
 from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.logging import progress_bar, time_logger, gather_and_log
@@ -16,7 +15,7 @@ from RL2.utils.logging import progress_bar, time_logger, gather_and_log
 @data_manager(pair=True)
 def update(worker, minibatches, step):
 
-    total_sequences = count_total(
+    total_pairs = count_total(
         minibatches, "eos_mask", worker.device_mesh["dp"]
     ) // 2
     metrics = defaultdict(list)
@@ -24,13 +23,9 @@ def update(worker, minibatches, step):
         minibatches, desc="Update critic"
     ):
         rewards = worker.forward(minibatch)
-        chosen_rewards, rejected_rewards = aggregate_values(
-            minibatch["eos_mask"] * rewards,
-            minibatch,
-            "seq_token_sum"
-        ).view(-1, 2).T
+        chosen_rewards, rejected_rewards = rewards.sum(-1).view(-1, 2).T
         reward_margins = chosen_rewards - rejected_rewards
-        loss = - F.logsigmoid(reward_margins).sum() / total_sequences
+        loss = - F.logsigmoid(reward_margins).sum() / total_pairs
         worker.backward(loss)
         metrics["loss"].append(loss.item())
         metrics["accuray"].extend((reward_margins > 0).tolist())
@@ -58,16 +53,17 @@ class RMTrainer(Trainer):
 
         step = load_ckpt(self, (self.critic,))
         for epoch in range(
-            step // len(self.train_dataloader), self.config.trainer.n_epochs
+            step // len(self.train_dataloader),
+            self.config.trainer.n_epochs
         ):
-            for tensor_dicts in tqdm(
+            for tensor_dict in tqdm(
                 self.train_dataloader,
                 desc=f"Epoch {epoch + 1}",
                 disable=(dist.get_rank() != 0),
                 initial=step % len(self.train_dataloader)
             ):
                 step += 1
-                update(self.critic, tensor_dicts, step)
+                update(self.critic, tensor_dict, step)
                 save_ckpt(self, (self.critic,), step)
         save_model(self, self.critic, rm=True)
 

@@ -1,16 +1,16 @@
-from RL2.datasets import BaseDataset, tokenize_messages
+from RL2.datasets import BaseDataset, pack_tensor_dicts
 
 class SFTDataset(BaseDataset):
     
     def __getitem__(self, idx):
 
-        messages = self.dataset[idx]["messages"]
-        return tokenize_messages(
-            self.tokenizer,
-            messages,
-            self.config.apply_chat_template,
-            self.config.max_length
-        )
-    
-    def collate_fn(self, batch):
-        return list(batch)
+        ex = self.dataset[idx]
+        if "prompt" in ex.keys():
+            return self.tokenize_prompt_response(
+                ex["prompt"], ex["response"]
+            )
+        else:
+            return self.tokenize_messages(ex["messages"])
+        
+    def collate_fn(self, tensor_dicts):
+        return pack_tensor_dicts(tensor_dicts)

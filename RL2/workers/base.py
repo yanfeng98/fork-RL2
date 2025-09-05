@@ -1,8 +1,9 @@
 import torch
 from torch.nn.utils import clip_grad_norm_
 import torch.distributed as dist
-import transformers
-from RL2.utils.parallelism import prepare_tp_model, prepare_dp_model
+from transformers import AutoTokenizer
+from RL2.utils.data_parallelism import prepare_dp_model
+from RL2.utils.tensor_parallelism import prepare_tp_model
 from RL2.utils.offloading import load_model_to_device, load_optimizer_to_device
 
 class Worker:
@@ -13,8 +14,8 @@ class Worker:
         self.train = train
 
         self.prepare_device_mesh()
-        self.tokenizer = transformers.AutoTokenizer.from_pretrained(
-            config.tokenizer_name, trust_remote_code=True
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            config.model_name, trust_remote_code=True
         )
 
     def prepare_device_mesh(self):

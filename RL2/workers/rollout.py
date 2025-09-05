@@ -14,7 +14,7 @@ from sglang.srt.model_executor.model_runner import LocalSerializedTensor
 from tqdm.asyncio import tqdm
 import wandb
 from RL2.workers import Worker
-from RL2.datasets import tokenize_messages
+from RL2.datasets import get_tensor_dict, pack_tensor_dicts
 from RL2.utils.comm import split_and_scatter_list, gather_and_concat_list
 from RL2.utils.logging import time_logger, gather_and_log
 
@@ -31,7 +31,7 @@ class Rollout(Worker):
             os.environ["SGLANG_BLOCK_NONZERO_RANK_CHILDREN"] = "0"
             self.llm = Engine(
                 model_path=config.model_name,
-                dtype="bfloat16",
+                dtype=config.dtype,
                 tp_size=self.device_mesh["tp"].size(),
                 mem_fraction_static=config.gpu_memory_utilization,
                 enable_memory_saver=True,
@@ -88,73 +88,65 @@ class Rollout(Worker):
         
     async def rollout(self, ex, train):
 
-        messages, answer = ex["messages"], ex["answer"]
+        texts, answer = [ex["prompt"]], ex["answer"]
+
+        states = self.tokenizer.encode(ex["prompt"], add_special_tokens=False)
+        actions = len(states) * [0]
+        action_mask = len(states) * [0]
+        logps = len(states) * [0]
+
         metric = defaultdict(list)
         for turn in range(self.config.max_turns):
 
-            if self.config.apply_chat_template:
-                prompt = self.tokenizer.apply_chat_template(
-                    messages,
-                    add_generation_prompt=True,
-                    tokenize=False
-                )
-            else:
-                prompt = "".join([
-                    msg["content"] for msg in messages
-                ])
-            
             response = await self.llm.async_generate(
-                prompt,
+                input_ids=states,
                 sampling_params=self.train_sampling_params
-                if train else self.test_sampling_params
+                if train else self.test_sampling_params,
+                return_logprob=True
             )
 
+            texts.append(response["text"])
+
             meta_info = response["meta_info"]
+            logp, state, _ = map(list, zip(*meta_info["output_token_logprobs"]))
+            states.extend(state)
+            actions.extend(state)
+            action_mask.extend(len(state) * [1])
+            logps.extend(logp)
+
             metric["response_length"].append(meta_info["completion_tokens"])
             metric["length_clip_ratio"].append(
                 meta_info["finish_reason"]["type"] == "length"
-            )
-
-            # Current SGLang engine will generate sequence longer than 
-            # `max_new_tokens`.
-            # TODO (P1): Check whether all configurations are properly set 
-            # and whether the bug has been fixed in the latest version.
-            content = self.tokenizer.decode(
-                self.tokenizer.encode(
-                    response["text"], add_special_tokens=False
-                )[:meta_info["completion_tokens"]]
-            )
-            messages.append(
-                {"role": "assistant", "content": content}
             )
 
             # Do not invoke tools in the last turn.
             if turn + 1 == self.config.max_turns:
                 break
 
-            env_messages = self.env.interact(messages)
+            env_response = await self.env.step(texts)
             # Terminate if no tool is invoked.
-            if len(env_messages) == 0:
+            if len(env_response) == 0:
                 break
 
-            messages.extend(env_messages)
+            texts.append(env_response)
 
-        reward = self.env.reward_fn(messages, answer)
+            state = self.tokenizer.encode(env_response, add_special_tokens=False)
+            states.extend(state)
+            actions.extend(len(state) * [0])
+            action_mask.extend(len(state) * [0])
+            logps.extend(len(state) * [0])
 
-        td = tokenize_messages(
-            self.tokenizer,
-            messages,
-            self.config.apply_chat_template
-        )
-        td["rewards"] = torch.FloatTensor(
-            (td["states"].shape[-1] - 1) * [0] + [reward]
-        )
+        reward = self.env.reward_fn(texts, answer)
+
+        td = get_tensor_dict(states, actions, action_mask)
+        td["rewards"] = torch.FloatTensor((len(states) - 2) * [0] + [reward])
+        td["llm_logps"] = torch.FloatTensor(logps[1:])
 
         metric["n_turns"].append(turn + 1)
         metric["rewards"].append(reward)
-        metric["trajectory_length"].append(len(td["states"]))
+        metric["sequence_length"].append(len(td["states"]))
 
-        return td, messages, metric
+        return td, texts, metric
 
     @time_logger("rollout")
     def __call__(self, data_list, train: bool, step: int):
@@ -172,7 +164,9 @@ class Rollout(Worker):
             outputs = loop.run_until_complete(
                 tqdm.gather(
                     *(self.rollout(ex, train) for ex in data_list),
-                    desc="Rollout", position=1, leave=False,
+                    desc="Rollout",
+                    position=1,
+                    leave=False,
                     disable=(dist.get_rank() != 0)
                 )
             )
@@ -184,10 +178,10 @@ class Rollout(Worker):
 
         if self.device_mesh["tp"].get_local_rank() == 0:
 
-            tensor_dicts, all_messages, metrics = map(list, zip(*outputs))
-
+            tensor_dicts, all_texts, metrics = map(list, zip(*outputs))
+            
             if dist.get_rank() == 0:
-                tqdm.write(json.dumps(all_messages[0], indent=4))
+                tqdm.write(json.dumps(all_texts[0], indent=4))
 
             suffix = "train" if train else "test"
             metrics = {
@@ -204,26 +198,32 @@ class Rollout(Worker):
             )
 
             if dist.get_rank() == 0:
-                if not self.config.dynamic_filtering:
-                    return tensor_dicts
 
-                rewards = torch.FloatTensor(
-                    [td["rewards"].sum() for td in tensor_dicts]
-                ).view(-1, self.config.responses_per_prompt)
-                are_filtered = (rewards.std(-1) == 0).tolist()
+                tensor_dict = pack_tensor_dicts(tensor_dicts)
+                if not self.config.dynamic_filtering:
+                    return tensor_dict
+
+                group_size = self.config.responses_per_prompt
+                rewards = tensor_dict["rewards"].sum(-1).view(-1, group_size)
+                are_filtered = rewards.std(-1) == 0
                 wandb.log({
-                    "dynamic_filtering_ratio": sum(are_filtered) / len(are_filtered)
+                    "dynamic_filtering_ratio": are_filtered.float().mean().item()
                 }, step=step)
-                return sum([
-                    tensor_dicts[idx * self.config.responses_per_prompt:(idx + 1) * self.config.responses_per_prompt]
-                    for idx, is_filtered in enumerate(are_filtered)
-                    if not is_filtered
-                ], [])
+                return {
+                    k:(
+                        v
+                        .view(-1, group_size, v.shape[-1])
+                        [~are_filtered]
+                        .view(-1, v.shape[-1])
+                    )
+                    for k, v in tensor_dict.items()
+                }
         
     @time_logger("update_rollout")
     def update(self, state_dict, step):
 
         torch.cuda.empty_cache()
+        dist.barrier()
         # or llm.resume_memory_occupation() may OOM
         if self.device_mesh["tp"].get_local_rank() == 0:
             self.llm.resume_memory_occupation()
@@ -249,4 +249,5 @@ class Rollout(Worker):
                     )],
                     flush_cache=(idx == len(state_dict) - 1)
                 )
+        state_dict.clear()
         dist.barrier()
