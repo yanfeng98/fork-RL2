@@ -20,7 +20,8 @@ RL2 is a production-ready library! Check our wandb report on [OpenThoughts](http
 
 ## Getting Started
 
-Install the library following command
+### Installation
+
 ```bash
 git clone https://github.com/ChenmienTan/RL2.git
 cd RL2
@@ -43,7 +44,6 @@ The former is more flexible but may be model-specific.
     }
 ]
 ```
-
 ```json
 [
     {
@@ -65,6 +65,7 @@ Multi-turn is only supported by the latter format.
     }
 ]
 ```
+
 ```json
 [
     {
@@ -99,7 +100,6 @@ Multi-turn is only supported by the latter format.
 ### Environments [[Examples]](./envs)
 
 In PPO, the language model interacts with the environment through a user-defined Python script, where the path should be specified by `actor.rollout.env_path`.
-
 In any case, function `reward_fn` in the following format should be included.
 ```python
 def reward_fn(texts: List[str], answer) -> float:
