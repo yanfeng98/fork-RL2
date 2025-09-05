@@ -126,10 +126,10 @@ class Actor(Worker):
                 clip_ratios = objective > clipped_objective
 
                 if self.config.tis_coef > 0:
-                    # Truncated Importance Sampling between inference engine and actor (https://fengyao.notion.site/off-policy-rl)
+                    # https://fengyao.notion.site/off-policy-rl
                     tis = torch.exp(
-                        logps - minibatch["llm_logps"]
-                    ).clamp(max=self.config.tis_coef).detach()
+                        logps.detach() - minibatch["llm_logps"]
+                    ).clamp(max=self.config.tis_coef)
                     losses *= tis
                     
                 loss, clip_ratio, entropy = aggregate_values(
