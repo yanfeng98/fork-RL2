@@ -125,6 +125,13 @@ class Actor(Worker):
                 losses = - torch.min(objective, clipped_objective)
                 clip_ratios = objective > clipped_objective
 
+                if self.config.tis_coef > 0:
+                    # Truncated Importance Sampling between inference engine and actor (https://fengyao.notion.site/off-policy-rl)
+                    tis = torch.exp(
+                        logps - minibatch["llm_logps"]
+                    ).clamp(max=self.config.tis_coef).detach()
+                    losses *= tis
+                    
                 loss, clip_ratio, entropy = aggregate_values(
                     (losses, clip_ratios, entropy),
                     minibatch["action_mask"],
@@ -132,7 +139,6 @@ class Actor(Worker):
                     total_actions,
                     total_sequences
                 )
-
                 loss = loss - self.config.entropy.coef * entropy
                 if self.config.kl.coef > 0 and self.config.kl.type == "loss":
                     kl_loss = compute_approx_kl(

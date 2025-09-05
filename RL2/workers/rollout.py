@@ -34,7 +34,7 @@ class Rollout(Worker):
                 tp_size=self.device_mesh["tp"].size(),
                 mem_fraction_static=config.gpu_memory_utilization,
                 enable_memory_saver=True,
-                port=30000 + dist.get_rank()
+                port=config.base_port + dist.get_rank()
             )
         
             self.train_sampling_params = OmegaConf.to_container(
