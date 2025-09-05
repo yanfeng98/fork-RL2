@@ -53,7 +53,7 @@ def action_extractor(func):
                 zip(cu_seqs[:-1], cu_seqs[1:])
             ):
                 indices = torch.where(raw_tensor_dict["action_mask"][start_idx:end_idx])
-                raw_tensor_dict[k][start_idx:end_idx][indices] = v[idx][len(indices[0]):]
+                raw_tensor_dict[k][start_idx:end_idx][indices] = v[idx][:len(indices[0])]
     
     return compute_adv_with_action_extraction
 

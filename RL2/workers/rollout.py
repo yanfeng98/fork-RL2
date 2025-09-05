@@ -235,6 +235,8 @@ class Rollout(Worker):
                 )
                 
                 return tensor_dict, cu_seqs
+
+        return None, None
         
     @time_logger("update_rollout")
     def update(self, state_dict, step):
