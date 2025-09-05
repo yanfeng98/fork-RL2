@@ -1,6 +1,5 @@
 from omegaconf import OmegaConf
 import os
-import json
 import asyncio
 import importlib
 from collections import defaultdict
@@ -203,31 +202,39 @@ class Rollout(Worker):
             if not train:
                 return
 
-            tensor_dicts = gather_and_concat_list(
-                tensor_dicts, self.device_mesh["dp"]
+            all_tensor_dicts = gather_and_concat_list(
+                all_tensor_dicts, self.device_mesh["dp"]
             )
 
             if dist.get_rank() == 0:
 
-                tensor_dict = pack_tensor_dicts(tensor_dicts)
-                if not self.config.dynamic_filtering:
-                    return tensor_dict
+                if self.config.dynamic_filtering:
 
-                group_size = self.config.responses_per_prompt
-                rewards = tensor_dict["rewards"].sum(-1).view(-1, group_size)
-                are_filtered = rewards.std(-1) == 0
-                wandb.log({
-                    "dynamic_filtering_ratio": are_filtered.float().mean().item()
-                }, step=step)
-                return {
-                    k:(
-                        v
-                        .view(-1, group_size, v.shape[-1])
-                        [~are_filtered]
-                        .view(-1, v.shape[-1])
-                    )
-                    for k, v in tensor_dict.items()
-                }
+                    group_size = self.config.responses_per_prompt
+                    rewards = torch.FloatTensor([
+                        sum([td["rewards"].sum().item() for td in tensor_dicts])
+                        for tensor_dicts in all_tensor_dicts
+                    ]).view(-1, group_size)
+                    are_filtered = rewards.std(-1) == 0
+                    all_tensor_dicts = sum([
+                        all_tensor_dicts[idx * group_size:(idx + 1) * group_size]
+                        for idx, is_filtered in enumerate(are_filtered)
+                        if not is_filtered
+                    ], [])
+                    wandb.log({
+                        "dynamic_filtering_ratio": are_filtered.float().mean().item()
+                    }, step=step)
+
+                tensor_dicts = sum(all_tensor_dicts, [])
+                tensor_dict = pack_tensor_dicts(tensor_dicts)
+                seqs = torch.LongTensor([
+                    len(tensor_dicts) for tensor_dicts in all_tensor_dicts
+                ])
+                cu_seqs = torch.cumsum(
+                    torch.cat((torch.LongTensor([0]), seqs)), dim=0
+                )
+                
+                return tensor_dict, cu_seqs
         
     @time_logger("update_rollout")
     def update(self, state_dict, step):
