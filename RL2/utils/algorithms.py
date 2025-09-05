@@ -75,8 +75,8 @@ def compute_gae(tensor_dict, gamma, lamda):
     gaes = torch.stack(reversed_gaes[::-1], -1)
     returns = gaes + tensor_dict["values"]
 
-    action_gaes = gaes[torch.where(tensor_dict["action_masks"])]
-    advantages = (gaes - action_gaes.mean()) * tensor_dict["action_masks"] / (
+    action_gaes = gaes[torch.where(tensor_dict["action_mask"])]
+    advantages = (gaes - action_gaes.mean()) * tensor_dict["action_mask"] / (
         action_gaes.std() + torch.finfo(gaes.dtype).eps
     )
 
