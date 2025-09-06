@@ -28,7 +28,7 @@ async def step(state, action, answer):
         next_state = state + action + "\nMy previous action is invalid. \
 If I want to search, I should put the query between <search> and </search>. \
 If I want to give the final answer, I should put the answer between <answer> and </answer>. Let me try again.\n"
-        return next_state, False, False
+        return next_state, 0.0, False
     elif match.group(1) == "search":
         query = match.group(2).strip()
         async with aiohttp.ClientSession() as session:
@@ -36,9 +36,12 @@ If I want to give the final answer, I should put the answer between <answer> and
                 "http://localhost:10000/search",
                 json={"query": query}
             ) as response:
-                passage = (await response.json())["passage"].strip()
-        next_state = state + action + f"\n\n<information>{passage}</information>\n\n"
-        return next_state, False, False
+                try:
+                    passage = (await response.json())["passage"].strip()
+                    next_state = state + action + f"\n\n<information>{passage}</information>\n\n"
+                except:
+                    next_state = state + action + "\nThe query exceeded the maximum length allowed. Let me try again.\n"
+        return next_state, 0.0, False
     else:
         preds = re.findall(
             r"<answer>(.*?)</answer>", action, re.DOTALL
