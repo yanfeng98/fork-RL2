@@ -1,26 +1,22 @@
 # You should firstly follow https://github.com/PeterGriffinJin/Search-R1 
 # to download the index and corpus.
 
-python -m sglang.launch_server \
-    --model-path intfloat/e5-base-v2 \
-    --is-embedding \
-    --tp 4 \
-    --mem-fraction-static 0.1 \
-    --port 10000 \
+vllm serve intfloat/e5-base-v2 \
+    --tensor-parallel-size 4 \
+    --gpu-memory-utilization 0.1 \
     --log-level warning &
 
 python envs/local_search_service.py \
     --model_name intfloat/e5-base-v2 \
-    --port 10000 \
     --index_path path/to/your/index \
     --corpus_path path/to/your/corpus \
     --top_k 3 &
 
-while [ $(curl -s -o /dev/null -w "%{http_code}" http://localhost:10000/health) -ne 200 ]; do
+while [ $(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health) -ne 200 ]; do
     sleep 1
 done
 
-while [ $(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health) -ne 200 ]; do
+while [ $(curl -s -o /dev/null -w "%{http_code}" http://localhost:10000/health) -ne 200 ]; do
     sleep 1
 done
 

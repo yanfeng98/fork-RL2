@@ -39,10 +39,8 @@ def main(args):
                     "input": query
                 }
             ) as response:
-                response = await response.json()
-        embed = np.array(
-            [response["data"][0]["embedding"]], dtype=np.float32
-        )
+                embed = (await response.json())["data"][0]["embedding"]
+        embed = np.array([embed], dtype=np.float32)
         _, indices = index.search(embed, k=args.top_k)
         passages = []
         for local_idx, global_idx in enumerate(indices[0]):
@@ -54,14 +52,14 @@ def main(args):
     log_config = uvicorn.config.LOGGING_CONFIG
     log_config["loggers"]["uvicorn"]["level"] = "WARNING"
     log_config["loggers"]["uvicorn.access"]["level"] = "WARNING"
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_config=log_config)
+    uvicorn.run(app, host="0.0.0.0", port=10000, log_config=log_config)
     
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str)
     parser.add_argument("--host", type=str, default="localhost")
-    parser.add_argument("--port", type=int, default=30000)
+    parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--index_path", type=str)
     parser.add_argument("--corpus_path", type=str)
     parser.add_argument("--top_k", type=int)

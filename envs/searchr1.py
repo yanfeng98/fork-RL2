@@ -33,7 +33,7 @@ If I want to give the final answer, I should put the answer between <answer> and
         query = match.group(2).strip()
         async with aiohttp.ClientSession() as session:
             async with session.post(
-                "http://localhost:8000/search",
+                "http://localhost:10000/search",
                 json={"query": query}
             ) as response:
                 passage = (await response.json())["passage"].strip()
