@@ -3,8 +3,7 @@
 
 vllm serve intfloat/e5-base-v2 \
     --tensor-parallel-size 4 \
-    --gpu-memory-utilization 0.1 \
-    --log-level warning &
+    --gpu-memory-utilization 0.1 &
 
 python envs/local_search_service.py \
     --model_name intfloat/e5-base-v2 \
