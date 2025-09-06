@@ -49,10 +49,7 @@ def main(args):
             passages.append(f"Doc {local_idx + 1}(Title: {title}) {text}")
         return {"passage": "\n".join(passages)}
 
-    log_config = uvicorn.config.LOGGING_CONFIG
-    log_config["loggers"]["uvicorn"]["level"] = "WARNING"
-    log_config["loggers"]["uvicorn.access"]["level"] = "WARNING"
-    uvicorn.run(app, host="0.0.0.0", port=10000, log_config=log_config)
+    uvicorn.run(app, host="0.0.0.0", port=10000)
     
 if __name__ == "__main__":
     
