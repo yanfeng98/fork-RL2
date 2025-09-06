@@ -1,8 +1,8 @@
 import argparse
 import json
 import time
-import requests
 import faiss
+import aiohttp
 import numpy as np
 import uvicorn
 from fastapi import FastAPI, Request
@@ -32,12 +32,14 @@ def main(args):
     async def local_search(request: Request):
 
         query = (await request.json())["query"]
-        response = requests.post(
-            f"http://{args.host}:{args.port}/v1/embeddings", json={
-                "model": args.model_name,
-                "input": query
-            }
-        ).json()
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                f"http://{args.host}:{args.port}/v1/embeddings", json={
+                    "model": args.model_name,
+                    "input": query
+                }
+            ) as response:
+                response = await response.json()
         embed = np.array(
             [response["data"][0]["embedding"]], dtype=np.float32
         )
@@ -47,7 +49,7 @@ def main(args):
             content = corpus[global_idx]["contents"].split("\n")
             title, text = content[0], "\n".join(content[1:])
             passages.append(f"Doc {local_idx + 1}(Title: {title}) {text}")
-        return "\n".join(passages)
+        return {"passage": "\n".join(passages)}
 
     log_config = uvicorn.config.LOGGING_CONFIG
     log_config["loggers"]["uvicorn"]["level"] = "WARNING"
