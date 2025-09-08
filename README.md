@@ -102,25 +102,35 @@ Multi-turn is only supported by the latter format.
 In PPO, the language model interacts with the environment through a user-defined function `step` in the following format.
 ```python
 async def step(
-    state: str, action: str, answer
-) -> Tuple[str, float, bool]:
+    state: str, action: str, extra_info: Dict
+) -> Dict:
     action_type = parse_action_type(action)
+    env_response = {
+        "next_state": None,
+        "reward": 0.0,
+        "score": 0.0,
+        "done": False,
+        "extra_info": extra_info
+    }
     if action_type == "search":
         query = parse_query(action)
         passage = await search_result(query)
-        next_state = state + action + passage
-        reward = 0.0
-        done = False
+        env_response["next_state"] = state + action + passage
     elif action_type == "answer":
-        next_state = None
         pred = parse_pred(action)
-        reward = float(is_equivalent(pred, answer))
-        done = True
-    return next_state, reward, done
+        reward = float(is_equivalent(pred, extra_info["answer"]))
+        env["reward"] = reward
+        env["score"] = score
+        env_response["done"] = True
+    return env_response
 ```
-`state` and `action` are the input and output of language model in the last turn and `next_state` is the input of language model in the next turn.
-When `state + action` is a prefix of `next_state`, the two turns will be processed in one sequence.
-`reward` is the reward of last turn and `done` indicates whether to terminate in the last turn.
+* `state` and `action` are the input and output of language model in the last turn and `next_state` is the input of language model in the next turn.
+When `state + action` is a prefix of `next_state`, the two turns will be processed in a single sequence.
+* `reward` is used to compute advantages (and subsequently update the model) while `score` is used to log the model performance.
+Diverge values may be used when needed.
+* `done` indicates whether to proceed to the next turn.
+* `extra_info` contains everything not aforementioned, *e.g.*, answer.
+
 The function should be included in a Python script where the path is specified by `actor.rollout.env_path`.
 
 ### Launch [[Examples]](./examples)
