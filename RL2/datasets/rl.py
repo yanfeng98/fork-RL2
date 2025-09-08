@@ -18,7 +18,7 @@ class RLDataset(BaseDataset):
 
         return {
             "prompt": prompt,
-            "extra_info": ex["extra_info"]
+            "extra_info": ex.get("extra_info", {})
         }
 
     def collate_fn(self, batch):
