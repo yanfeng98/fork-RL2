@@ -82,7 +82,9 @@ Multi-turn is only supported by the latter format.
 [
     {
         "prompt": "The capital of China is",
-        "answer": "Beijing"
+        "extra_info": {
+            "answer": "Beijing"
+        }
     }
 ]
 ```
@@ -92,7 +94,9 @@ Multi-turn is only supported by the latter format.
         "messages": [
             {"role": "user", "content": "What is the capital of China?"}
         ],
-        "answer": "Beijing"
+        "extra_info": {
+            "answer": "Beijing"
+        }
     }
 ]
 ```
