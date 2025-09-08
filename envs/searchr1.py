@@ -43,10 +43,7 @@ If I want to give the final answer, I should put the answer between <answer> and
                     next_state = state + action + "\nThe query exceeded the maximum length allowed. Let me try again.\n"
         return next_state, 0.0, False
     else:
-        preds = re.findall(
-            r"<answer>(.*?)</answer>", action, re.DOTALL
-        )
-        pred = normalize_answer(preds[-1].strip())
+        pred = normalize_answer(match.group(2).strip())
 
         if isinstance(answer, str):
             answer = [answer]
