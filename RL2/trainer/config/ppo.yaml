@@ -49,9 +49,13 @@ rollout:
   train_sampling_params:
     temperature: 1.0
     max_new_tokens: null
+    stop: null
+    no_stop_trim: true
   test_sampling_params:
     temperature: 0.0
     max_new_tokens: ${rollout.train_sampling_params.max_new_tokens}
+    stop: ${rollout.train_sampling_params.stop}
+    no_stop_trim: ${rollout.train_sampling_params.no_stop_trim}
   max_turns: 1
   env_path: null
   dynamic_filtering: true
@@ -75,7 +79,7 @@ critic:
   sp_size: ${actor.sp_size}
   max_length_per_device: ${actor.max_length_per_device}
   max_inference_length_per_device: ${critic.max_length_per_device}
-  update_per_rollout: 12
+  update_per_rollout: ${actor.update_per_rollout}
   clip: 0.5
   avg_level: ${actor.avg_level}
   lr: 5e-6
