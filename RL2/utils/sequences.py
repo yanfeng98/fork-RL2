@@ -14,22 +14,8 @@ def _tensor_dict_to_minibatches(
     worker, tensor_dict, pair: bool
 ):
 
-    # We pack sequences into minibatches for higher throughput.
-    # There are two constrains:
-    #   * The length of any minibatch cannot exceed `max_length_per_dp`
-    #   * The number of minibatches must be multiple of dp size (so that
-    #     each dp shares identical number of minibatches)
-    # To satisfy the first constraint, the number of minibatches must be
-    # at least `math.ceil(total_length / max_length_per_dp)`.
-    # Starting from the first multiple of dp size that is no less than 
-    # the value, we pack sequences into `n_minibatches` minibatches and 
-    # check whether the first constraint is satisfied. If not, we increase 
-    # `n_minibatches` by dp size (so that the second constraint is always 
-    # satisfied) and repeat the loop.
     seq_len_list = (tensor_dict["eos_mask"].argmax(-1) + 1).tolist()
     if pair:
-        # When pair, every two adjacent sequences will be colocated, so 
-        # their length are summed.
         seq_len_list = torch.tensor(seq_len_list).view(-1, 2).sum(-1).tolist()
     max_length_per_dp = worker.device_mesh["sp"].size() * worker.device_mesh["tp"].size() * (
         worker.config.max_length_per_device
@@ -46,13 +32,10 @@ def _tensor_dict_to_minibatches(
     if n_minibatches % multiple_of != 0:
         n_minibatches += multiple_of - n_minibatches % multiple_of
 
-    # Partition sequences into n_minibatches balanced minibatches.
     while True:
 
         global PAD_SEQUENCES
         if n_minibatches > len(seq_len_list):
-            # The number of sequences must be no less than `n_minibatches`.
-            # If not, we pad the number of sequences to `n_minibatches`.
             PAD_SEQUENCES = n_minibatches - len(seq_len_list)
             for k, v in tensor_dict.items():
                 tensor_dict[k] = torch.cat((
