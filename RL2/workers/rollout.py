@@ -209,9 +209,9 @@ class Rollout(Worker):
 
             if dist.get_rank() == 0:
 
-                if self.config.dynamic_filtering:
+                group_size = self.config.responses_per_prompt
+                if group_size > 1 and self.config.dynamic_filtering:
 
-                    group_size = self.config.responses_per_prompt
                     rewards = torch.FloatTensor([
                         sum([td["rewards"].sum().item() for td in tensor_dicts])
                         for tensor_dicts in all_tensor_dicts
