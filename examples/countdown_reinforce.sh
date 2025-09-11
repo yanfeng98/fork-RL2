@@ -2,7 +2,7 @@ torchrun \
     --nproc_per_node=4 \
     -m RL2.trainer.ppo \
     train_data.path=train@Chenmien/Countdown \
-    train_data.prompts_per_rollout=32 \
+    train_data.prompts_per_rollout=128 \
     train_data.responses_per_prompt=4 \
     test_data.path=test@Chenmien/Countdown \
     actor.model_name=Qwen/Qwen2.5-3B-Instruct \
