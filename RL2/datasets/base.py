@@ -79,7 +79,7 @@ class BaseDataset(Dataset):
         self.config = config
         self.dataset = (
             load_dataset(config.path) if config.path else
-            [{} for _ in range(config.prompts_per_rollout)]
+            [{} for _ in range(config.prompts_per_rollout)] # for Gym like environments
         )
         self.tokenizer = tokenizer
 
