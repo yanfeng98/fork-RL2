@@ -65,7 +65,7 @@ def load_ckpt(trainer, workers):
         )
     
     ckpt = get_ckpt(trainer, workers, 0)
-    dcp.load(ckpt, checkpoint_id)
+    dcp.load(ckpt, checkpoint_id=checkpoint_id)
     trainer.train_dataloader.load_state_dict(ckpt["dataloader"])
     for idx, worker in enumerate(workers):
         load_worker_ckpt(worker, ckpt[f"worker{idx}"])
