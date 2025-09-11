@@ -23,7 +23,7 @@ def get_worker_ckpt(worker):
     return {
         "model": getattr(
             worker, "state_dict", get_state_dict(worker)
-        ),
+        ), # for Actor in PPO, state dict has been prepared
         "optimizer": worker.optimizer.state_dict(),
         "scheduler": worker.scheduler.state_dict()
     }
@@ -51,11 +51,11 @@ def load_worker_ckpt(worker, ckpt):
 
 def load_ckpt(trainer, workers):
 
-    if trainer.config.trainer.load_ckpt_from is None:
+    checkpoint_id = trainer.config.trainer.load_ckpt_from
+    
+    if checkpoint_id is None:
         return 0
 
-    ckpt = get_ckpt(trainer, workers, 0)
-    checkpoint_id = trainer.config.trainer.load_ckpt_from
     if checkpoint_id == "latest":
         save_dirs = glob.glob(f"{trainer.config.trainer.save_dir}/step*")
         if not save_dirs:
@@ -64,6 +64,7 @@ def load_ckpt(trainer, workers):
             save_dirs, key=lambda dir: int(dir.split("/step")[-1])
         )
     
+    ckpt = get_ckpt(trainer, workers, 0)
     dcp.load(ckpt, checkpoint_id)
     trainer.train_dataloader.load_state_dict(ckpt["dataloader"])
     for idx, worker in enumerate(workers):
