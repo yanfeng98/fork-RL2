@@ -126,7 +126,7 @@ class PPOTrainer(Trainer):
                 )
 
                 self.rollout.update(state_dict, step)
-                if step % self.config.trainer.test_freq == 0:
+                if self.config.trainer.test_freq is not None and step % self.config.trainer.test_freq == 0:
                     for data_list in self.test_dataloader:
                         self.rollout(data_list, False, step)
 
