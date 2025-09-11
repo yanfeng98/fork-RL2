@@ -5,6 +5,7 @@ train_data:
 
 test_data:
   path: null
+  prompts_per_rollout: ${train_data.prompts_per_rollout}
   responses_per_prompt: 1
   
 actor:
