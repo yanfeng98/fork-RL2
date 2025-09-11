@@ -5,7 +5,7 @@ torchrun \
     actor.model_name=Qwen/Qwen3-1.7B-Base \
     actor.max_length_per_device=8192 \
     rollout.train_sampling_params.max_new_tokens=4096 \
-    rollout.env_path=envs/gem_env.py \
+    rollout.env_path=envs/gem.py \
     rollout.max_turns=16 \
     adv.global_norm=true \
     adv.norm_var=true \
