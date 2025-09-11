@@ -109,7 +109,10 @@ class Rollout(Worker):
         
     async def rollout(self, ex, train):
 
-        state_text = ex.get("prompt", await self.env.reset(ex["extra_info"]))
+        state_text = (
+            ex["prompt"] if "prompt" in ex else
+            await self.env.reset(ex["extra_info"])
+        )
         state_dict = self.initialize_state_dict(state_text)
         env_response = {"extra_info": ex["extra_info"]}
         tensor_dicts = []
