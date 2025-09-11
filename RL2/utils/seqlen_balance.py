@@ -100,21 +100,6 @@ def karmarkar_karp(seqlen_list: list[int], k_partitions: int, equal_size: bool):
     return partitions
 
 def get_seqlen_balanced_partitions(seqlen_list: list[int], k_partitions: int, equal_size: bool):
-    """ get order of seq lengths to make partitions balanced, this is
-        used in balacing sum of seqlength across dp ranks and microbatches
-    Parameters:
-        seqlen_list (List[int]):
-            seq lengths of each items
-        k_partitions (int):
-            resulting number of partitions
-        equal_size (bool):
-            if True, number of items in each partitions must be equal.
-            if False, only consider balancing the sum, each partition can have
-            variable number of items
-    Returns:
-        partitions (List[List[int]]):
-            return k_partitions list containing the index of items.
-    """
     assert len(seqlen_list) >= k_partitions, f"number of items:[{len(seqlen_list)}] < k_partitions:[{k_partitions}]"
 
     def _check_and_sort_partitions(partitions: List[List[int]]) -> list[list[int]]:

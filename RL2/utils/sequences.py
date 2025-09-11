@@ -3,6 +3,7 @@ import math
 import functools
 import torch
 import torch.distributed as dist
+from RL2.workers.base import Worker
 from RL2.utils.seqlen_balance import get_seqlen_balanced_partitions
 from RL2.utils.comm import (
     split_and_scatter_list,
@@ -11,8 +12,8 @@ from RL2.utils.comm import (
 )
 
 def _tensor_dict_to_minibatches(
-    worker, tensor_dict, pair: bool
-):
+    worker: "Worker", tensor_dict, pair: bool
+) -> list[dict[str, torch.Tensor]]:
 
     seq_len_list = (tensor_dict["eos_mask"].argmax(-1) + 1).tolist()
     if pair:
@@ -52,10 +53,10 @@ def _tensor_dict_to_minibatches(
         else:
             PAD_SEQUENCES = 0
 
-        partitions: List[List[int]] = get_seqlen_balanced_partitions(
+        partitions: list[list[int]] = get_seqlen_balanced_partitions(
             seq_len_list, k_partitions=n_minibatches, equal_size=False
         )
-        max_minibatch_length = max([
+        max_minibatch_length: int = max([
             sum([seq_len_list[p] for p in partition])
             for partition in partitions
         ])
@@ -64,7 +65,7 @@ def _tensor_dict_to_minibatches(
         n_minibatches += worker.device_mesh["dp"].size()
 
     if pair:
-        partitions = [
+        partitions: list[list[int]] = [
             sum([[2 * p, 2 * p + 1] for p in partition], [])
             for partition in partitions
         ]
@@ -80,7 +81,7 @@ def _tensor_dict_to_minibatches(
 
 def tensor_dict_to_minibatches(
     worker, tensor_dict, pack_minibatches: bool, pair: bool
-):
+) -> list[dict[str, torch.Tensor]]:
 
     if pack_minibatches:
         # Pack minibatches into multiple batches, where each batch is 
@@ -106,7 +107,7 @@ def tensor_dict_to_minibatches(
     if worker.device_mesh["tp"].get_local_rank() == 0:
         if worker.device_mesh["sp"].get_local_rank() == 0:
             if worker.device_mesh["dp"].get_local_rank() == 0:
-                minibatches = _tensor_dict_to_minibatches(
+                minibatches: list[dict[str, torch.Tensor]] = _tensor_dict_to_minibatches(
                     worker, tensor_dict, pair
                 )
             minibatches = split_and_scatter_list(
