@@ -8,21 +8,27 @@ from torch.distributed.checkpoint.state_dict import (
     set_model_state_dict
 )
 from transformers import AutoModelForSequenceClassification
-from RL2.utils.offloading import model_offloading_manager
+from RL2.utils.offloading import (
+    model_offloading_manager,
+    optimizer_offloading_manager
+)
 
-def get_state_dict(model, full_state_dict: bool):
+def get_state_dict(
+    model, full_state_dict=False, cpu_offload=True
+):
 
     options = StateDictOptions(
         full_state_dict=full_state_dict,
-        cpu_offload=True
+        cpu_offload=cpu_offload
     )
     return get_model_state_dict(model, options=options)
 
 @model_offloading_manager
+@optimizer_offloading_manager
 def get_worker_ckpt(worker):
     return {
         "model": get_state_dict(
-            worker.model, full_state_dict=False
+            worker.model, cpu_offload=False
         ),
         "optimizer": worker.optimizer.state_dict(),
         "scheduler": worker.scheduler.state_dict()
