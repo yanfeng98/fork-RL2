@@ -243,7 +243,7 @@ class Rollout(Worker):
         return None, None
         
     @time_logger("update_rollout")
-    def update(self, state_dict, step):
+    def update(self, actor, step):
 
         torch.cuda.empty_cache()
         dist.barrier()
@@ -251,7 +251,7 @@ class Rollout(Worker):
         if self.device_mesh["tp"].get_local_rank() == 0:
             self.llm.resume_memory_occupation()
         
-        for idx, (name, tensor) in enumerate(state_dict.items()):
+        for idx, (name, tensor) in enumerate(actor.state_dict.items()):
             tensor = tensor.to(torch.cuda.current_device())
             serialized_tensor = MultiprocessingSerializer.serialize(
                 tensor.full_tensor() if isinstance(tensor, DTensor) else tensor
@@ -270,7 +270,7 @@ class Rollout(Worker):
                     named_tensors=[(
                         name, LocalSerializedTensor(values=serialized_tensors)
                     )],
-                    flush_cache=(idx == len(state_dict) - 1)
+                    flush_cache=(idx == len(actor.state_dict) - 1)
                 )
-        state_dict.clear()
+        actor.state_dict.clear()
         dist.barrier()

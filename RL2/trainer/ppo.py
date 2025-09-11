@@ -114,7 +114,7 @@ class PPOTrainer(Trainer):
                         self.compute_approx_kl(tensor_dict, step)
                     self.compute_advantages(tensor_dict, cu_seqs, step)
 
-                state_dict = self.actor.update(tensor_dict, step)
+                self.actor.update(tensor_dict, step)
                 if self.config.adv.estimator == "gae":
                     self.critic.update(tensor_dict, step)
                 save_ckpt(
@@ -125,7 +125,7 @@ class PPOTrainer(Trainer):
                     step
                 )
 
-                self.rollout.update(state_dict, step)
+                self.rollout.update(self.actor, step)
                 if self.config.trainer.test_freq is not None and step % self.config.trainer.test_freq == 0:
                     for data_list in self.test_dataloader:
                         self.rollout(data_list, False, step)

@@ -8,27 +8,21 @@ from torch.distributed.checkpoint.state_dict import (
     set_model_state_dict
 )
 from transformers import AutoModelForSequenceClassification
-from RL2.utils.offloading import (
-    model_offloading_manager,
-    optimizer_offloading_manager
-)
+from RL2.utils.offloading import model_offloading_manager
 
-def get_state_dict(
-    model, full_state_dict=False, cpu_offload=True
-):
+@model_offloading_manager
+def get_state_dict(worker, full_state_dict=False):
 
     options = StateDictOptions(
         full_state_dict=full_state_dict,
-        cpu_offload=cpu_offload
+        cpu_offload=True
     )
-    return get_model_state_dict(model, options=options)
+    return get_model_state_dict(worker.model, options=options)
 
-@model_offloading_manager
-@optimizer_offloading_manager
 def get_worker_ckpt(worker):
     return {
-        "model": get_state_dict(
-            worker.model, cpu_offload=False
+        "model": getattr(
+            worker, "state_dict", get_state_dict(worker)
         ),
         "optimizer": worker.optimizer.state_dict(),
         "scheduler": worker.scheduler.state_dict()
@@ -93,7 +87,7 @@ def save_model(trainer, worker, rm=False):
     if trainer.config.trainer.save_freq is not None:
         save_dir += "/latest"
     state_dict = get_state_dict(
-        worker.model, full_state_dict=True
+        worker, full_state_dict=True
     )
     if dist.get_rank() == 0:
 
