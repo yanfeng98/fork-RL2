@@ -1,7 +1,7 @@
 train_data:
   path: null
   prompts_per_rollout: null
-  responses_per_prompt: null
+  responses_per_prompt: 1
 
 test_data:
   path: null
@@ -23,7 +23,7 @@ actor:
   lr: 1e-6
   weight_decay: 1e-2
   max_grad_norm: 1.0
-  tis_coef: 0.0
+  tis_coef: 2.0
   scheduler: constant
   warmup_ratio: 0.1
   freeze_steps: 0

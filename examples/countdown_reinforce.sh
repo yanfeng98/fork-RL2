@@ -10,7 +10,6 @@ torchrun \
     rollout.train_sampling_params.max_new_tokens=1024 \
     "rollout.train_sampling_params.stop=['</answer>']" \
     rollout.env_path=envs/countdown.py \
-    adv.estimator=reinforce \
     trainer.project=Countdown \
     trainer.experiment_name=qwen2.5-3b_reinforce \
     trainer.test_freq=8 \
