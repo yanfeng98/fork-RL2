@@ -30,9 +30,7 @@ RL2 is a production-ready library! Check our wandb report on [OpenThoughts](http
 ### Installation
 
 ```bash
-git clone https://github.com/ChenmienTan/RL2.git
-cd RL2
-pip install .
+pip install rl-square
 ```
 
 ### Data Preperation [[Examples]](https://huggingface.co/Chenmien/datasets)
