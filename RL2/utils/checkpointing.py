@@ -20,10 +20,11 @@ def get_state_dict(worker, full_state_dict=False):
     return get_model_state_dict(worker.model, options=options)
 
 def get_worker_ckpt(worker):
+    
+    if not hasattr(worker, "state_dict"):
+        worker.state_dict = get_state_dict(worker)
     return {
-        "model": getattr(
-            worker, "state_dict", get_state_dict(worker)
-        ), # for Actor in PPO, state dict has been prepared
+        "model": worker.state_dict,
         "optimizer": worker.optimizer.state_dict(),
         "scheduler": worker.scheduler.state_dict()
     }
@@ -36,7 +37,8 @@ def get_ckpt(trainer, workers, step):
     }
 
     for idx, worker in enumerate(workers):
-        ckpt[f"worker{idx}"] = get_worker_ckpt(worker)
+        if hasattr(worker, "model"):
+            ckpt[f"worker{idx}"] = get_worker_ckpt(worker)
 
     return ckpt
 
@@ -68,7 +70,12 @@ def load_ckpt(trainer, workers):
     dcp.load(ckpt, checkpoint_id=checkpoint_id)
     trainer.train_dataloader.load_state_dict(ckpt["dataloader"])
     for idx, worker in enumerate(workers):
-        load_worker_ckpt(worker, ckpt[f"worker{idx}"])
+        if hasattr(worker, "model"):
+            load_worker_ckpt(worker, ckpt[f"worker{idx}"])
+        if hasattr(worker, "llm"):
+            if worker.device_mesh["tp"].get_local_rank() == 0:
+                worker.llm.release_memory_occupation()
+            worker.update(workers[0], ckpt["step"])
 
     return ckpt["step"]
 
