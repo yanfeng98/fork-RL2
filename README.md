@@ -2,9 +2,6 @@
 
 A concise library of post-training for large language models.
 
-This is the right library for you if you want to learn reinforcement learning for large language models or have a quick test for your own algorithm.
-We deliver a clear implementation without complicated abstractions.
-
 Despite the simplicity, you should be able to scale up to moderate-sized, *e.g.*, 72B, language models with
 
 * Training engine partition via [Fully Sharded Data Parallelism](https://docs.pytorch.org/docs/stable/fsdp.html) and [Tensor Parallelism](https://docs.pytorch.org/docs/stable/distributed.tensor.parallel.html)
@@ -19,25 +16,23 @@ We also support
 
 RL2 is a production-ready library! Check our wandb report on [OpenThoughts](https://wandb.ai/chenmientan/OpenThoughts_archive), [SkyworkRM](https://wandb.ai/chenmientan/SkyworkRM_archive), [UltraFeedback](https://wandb.ai/chenmientan/UltraFeedback_archive), [TinyZero](https://wandb.ai/chenmientan/Countdown_archive), [LetterCounting](https://wandb.ai/chenmientan/LetterCounting_archive), and [SearchR1](https://wandb.ai/chenmientan/SearchR1_archive).
 
-## Incoming Features
-
-- [ ] Support partial rollout to increase GPU utilization
-- [ ] Use SGLang Router to forward requests for load balance between inference engines
-- [X] Integrate GEM to scale environments
-
 ## Getting Started
 
 ### Installation
 
 ```bash
-pip install rl-square
+git clone git@github.com:yanfeng98/fork-RL2.git
+cd fork-RL2
+uv venv --python 3.11
+source .venv/bin/activate
+uv pip install torch==2.6.0 setuptools
+uv pip install -e . --no-build-isolation
 ```
 
 ### Data Preperation [[Examples]](https://huggingface.co/Chenmien/datasets)
 
 Hugging Face dataset and various file types, *i.e.*, JSON, JSONL, CSV, Parquet, and Arrow, are accepted.
 All trainers support formats of both raw text and messages.
-The former is more flexible but may be model-specific.
 
 #### SFT
 
@@ -186,24 +181,3 @@ The default algorithm is [Dr. GRPO](https://arxiv.org/abs/2503.20783), where the
 
 * To use OpenAI PPO, set `kl.type=reward`, `kl.reward_estimator=k1`, and `adv.estimator=gae`
 * To use DeepSeek GRPO, set `actor.avg_level=sequence`, `kl.type=loss`, `kl.loss_estimator=k3`, and `adv.norm_var=true`
-
-## Acknowledgement
-
-This project is built upon the basis of many remarkable projects, including but not limited to
-* [DeepSpeedChat](https://github.com/deepspeedai/DeepSpeedExamples/tree/master/applications/DeepSpeed-Chat) for the proposal of hybrid engine
-* [RingFlashAttention](https://github.com/zhuzilin/ring-flash-attention) for the support of Llama context parallelism
-* [SGLang](https://github.com/sgl-project/sglang) for the support of async inference engine
-
-We also thank [OpenRLHF](https://github.com/OpenRLHF/OpenRLHF) and [veRL](https://github.com/volcengine/verl) for their pioneering work.
-
-## Citation
-If you find this library useful, please cite in the following format
-```latex
-@misc{Tan2025RL2,
-    author={Chenmien Tan and Simon Yu and Lanbo Lin and Ze Zhang and Yuanwu Xu and Chenhao Jiang and Tianyuan Yang and Sicong Xie and Guannan Zhang},
-    title={RL2: Ray Less Reinforcement Learning},
-    note={GitHub repository},
-    howpublished={\url{https://github.com/ChenmienTan/RL2}},
-    year={2025}
-}
-```
