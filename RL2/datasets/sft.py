@@ -4,7 +4,7 @@ class SFTDataset(BaseDataset):
     
     def __getitem__(self, idx):
 
-        ex = self.dataset[idx]
+        ex: dict[str, list[dict[str, str]]] = self.dataset[idx]
         if "prompt" in ex.keys():
             return self.tokenize_prompt_response(
                 ex["prompt"], ex["response"]

@@ -1,3 +1,4 @@
+from omegaconf import DictConfig
 from collections import defaultdict
 
 import torch
@@ -26,7 +27,7 @@ from RL2.utils.logging import (
 
 class Actor(Worker):
 
-    def __init__(self, config, train: bool):
+    def __init__(self, config: DictConfig, train: bool):
         super().__init__(config, train)
         
         if config.use_liger_kernel:
@@ -37,7 +38,7 @@ class Actor(Worker):
         else:
             model_cls = AutoModelForCausalLM
 
-        self.model = model_cls.from_pretrained(
+        self.model: AutoModelForCausalLM = model_cls.from_pretrained(
             config.model_name,
             trust_remote_code=True,
             attn_implementation="flash_attention_2"

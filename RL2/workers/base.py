@@ -1,7 +1,12 @@
+from omegaconf import DictConfig
+
 import torch
 from torch.nn.utils import clip_grad_norm_
 import torch.distributed as dist
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
 from transformers import AutoTokenizer
+
 from RL2.utils.data_parallelism import prepare_dp_model
 from RL2.utils.tensor_parallelism import prepare_tp_model
 from RL2.utils.offloading import (
@@ -11,23 +16,23 @@ from RL2.utils.offloading import (
 
 class Worker:
 
-    def __init__(self, config, train: bool):
+    def __init__(self, config: DictConfig, train: bool):
 
-        self.config = config
-        self.train = train
+        self.config: DictConfig = config
+        self.train: bool = train
 
         self.prepare_device_mesh()
-        self.tokenizer = AutoTokenizer.from_pretrained(
+        self.tokenizer: AutoTokenizer = AutoTokenizer.from_pretrained(
             config.model_name, trust_remote_code=True
         )
 
-    def prepare_device_mesh(self):
+    def prepare_device_mesh(self) -> None:
 
-        world_size = dist.get_world_size()
+        world_size: int = dist.get_world_size()
         assert world_size % (self.config.ddp_size * self.config.tp_size) == 0, \
             f"World_size {world_size} must be divisible by ddp_size {self.config.ddp_size} * tp_size {self.config.tp_size}."
-        self.fsdp_size = world_size // (self.config.ddp_size * self.config.tp_size)
-        self.model_device_mesh = dist.device_mesh.init_device_mesh(
+        self.fsdp_size: int = world_size // (self.config.ddp_size * self.config.tp_size)
+        self.model_device_mesh: dist.device_mesh.DeviceMesh = dist.device_mesh.init_device_mesh(
             "cuda",
             mesh_dim_names=("ddp", "fsdp", "tp"),
             mesh_shape=(self.config.ddp_size, self.fsdp_size, self.config.tp_size)
@@ -35,8 +40,8 @@ class Worker:
 
         assert world_size % (self.config.sp_size * self.config.tp_size) == 0, \
             f"World_size {world_size} must be divisible by sp_size {self.config.sp_size} * tp_size {self.config.tp_size}."
-        self.dp_size = world_size // (self.config.sp_size * self.config.tp_size)
-        self.device_mesh = dist.device_mesh.init_device_mesh(
+        self.dp_size: int = world_size // (self.config.sp_size * self.config.tp_size)
+        self.device_mesh: dist.device_mesh.DeviceMesh = dist.device_mesh.init_device_mesh(
             "cuda",
             mesh_dim_names=("dp", "sp", "tp"),
             mesh_shape=(self.dp_size, self.config.sp_size, self.config.tp_size)
@@ -50,12 +55,12 @@ class Worker:
         if self.config.tp_size > 1:
             prepare_tp_model(self.model, self.model_device_mesh["tp"])
 
-        self.model = prepare_dp_model(
+        self.model: FSDP = prepare_dp_model(
             self.model, self.model_device_mesh["ddp", "fsdp"]
         )
 
         if self.train:
-            self.optimizer = torch.optim.AdamW(
+            self.optimizer: torch.optim.AdamW = torch.optim.AdamW(
                 self.model.parameters(),
                 lr=self.config.lr,
                 weight_decay=self.config.weight_decay
@@ -63,13 +68,13 @@ class Worker:
 
         load_model_to_device(self, "cpu")
             
-    def backward(self, loss: torch.Tensor):
+    def backward(self, loss: torch.Tensor) -> None:
         (self.dp_size * self.config.sp_size * loss).backward()
     
     @optimizer_offloading_manager
-    def optimizer_step(self):
+    def optimizer_step(self) -> float:
 
-        grad_norm = clip_grad_norm_(
+        grad_norm: torch.Tensor = clip_grad_norm_(
             self.model.parameters(),
             max_norm=self.config.max_grad_norm
         )

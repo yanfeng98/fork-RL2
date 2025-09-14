@@ -1,8 +1,10 @@
 import functools
+
 import torch
 from torch.distributed.fsdp._runtime_utils import _lazy_init
+from torch.distributed.fsdp._flat_param import FlatParameter
 
-def load_model_to_device(worker, device):
+def load_model_to_device(worker, device: str) -> None:
     
     if not getattr(worker.config, "offload_model", False):
         return
@@ -11,18 +13,29 @@ def load_model_to_device(worker, device):
     for handle in worker.model._all_handles:
         if handle._offload_params:
             continue
-        flat_param = handle.flat_param
+        flat_param: FlatParameter = handle.flat_param
         handle.flat_param_to(device, non_blocking=True)
         flat_param._local_shard = flat_param.data
 
-def load_optimizer_to_device(worker, device):
+def optimizer_offloading_manager(func):
+
+    @functools.wraps(func)
+    def func_with_optimizer_offloading(worker, *args, **kwargs):
+        load_optimizer_to_device(worker, torch.cuda.current_device())
+        output: float = func(worker, *args, **kwargs)
+        load_optimizer_to_device(worker, "cpu")
+        return output
+    
+    return func_with_optimizer_offloading
+
+def load_optimizer_to_device(worker, device: int) -> None:
 
     if not getattr(worker.config, "offload_optimizer", False):
         return
 
     for param_group in worker.optimizer.param_groups:
         for param in param_group["params"]:
-            state = worker.optimizer.state[param]
+            state: dict = worker.optimizer.state[param]
             for key, value in state.items():
                 if isinstance(value, torch.Tensor):
                     state[key] = value.to(
@@ -39,14 +52,3 @@ def model_offloading_manager(func):
         return output
     
     return func_with_model_offloading
-
-def optimizer_offloading_manager(func):
-
-    @functools.wraps(func)
-    def func_with_optimizer_offloading(worker, *args, **kwargs):
-        load_optimizer_to_device(worker, torch.cuda.current_device())
-        output = func(worker, *args, **kwargs)
-        load_optimizer_to_device(worker, "cpu")
-        return output
-    
-    return func_with_optimizer_offloading

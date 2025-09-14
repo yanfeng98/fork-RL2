@@ -6,11 +6,11 @@ from typing import Any
 import torch
 import torch.distributed as dist
 
-def initialize_global_process_group(timeout_second=36000):
+def initialize_global_process_group(timeout_second: int = 36000) -> None:
     
     dist.init_process_group("nccl", timeout=timedelta(seconds=timeout_second))
 
-    local_rank = int(os.environ["LOCAL_RANK"])
+    local_rank: int = int(os.environ["LOCAL_RANK"])
     if dist.is_initialized():
         torch.cuda.set_device(local_rank)
 

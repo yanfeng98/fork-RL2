@@ -1,5 +1,6 @@
 import hydra
 from tqdm import tqdm
+from omegaconf import DictConfig
 from collections import defaultdict
 
 import torch
@@ -45,11 +46,11 @@ def update(worker: Actor, minibatches, step):
 
 class SFTTrainer(Trainer):
 
-    def __init__(self, config):
+    def __init__(self, config: DictConfig):
         super().__init__(config)
 
-        self.actor = Actor(config.actor, True)
-        dataset = SFTDataset(
+        self.actor: Actor = Actor(config.actor, True)
+        dataset: SFTDataset = SFTDataset(
             config.data, self.actor.tokenizer
         )
         self.train_dataloader = get_dataloader(
@@ -77,11 +78,11 @@ class SFTTrainer(Trainer):
 
 
 @hydra.main(config_path="config", config_name="sft", version_base=None)
-def main(config):
+def main(config: DictConfig) -> None:
 
     initialize_global_process_group()
 
-    trainer = SFTTrainer(config)
+    trainer: SFTTrainer = SFTTrainer(config)
     trainer.train()
 
     dist.destroy_process_group()

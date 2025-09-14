@@ -12,7 +12,6 @@ from torch.distributed.checkpoint.state_dict import (
 from transformers import AutoModelForSequenceClassification
 
 from RL2.workers.base import Worker
-from RL2.trainer.base import Trainer
 from RL2.utils.offloading import model_offloading_manager
 
 @model_offloading_manager
@@ -94,7 +93,7 @@ def save_ckpt(trainer, workers, step):
         checkpoint_id=f"{trainer.config.trainer.save_dir}/step{step}"
     )
 
-def save_model(trainer: Trainer, worker: Worker, rm: bool = False):
+def save_model(trainer, worker: Worker, rm: bool = False):
 
     save_dir: str = trainer.config.trainer.save_dir
     if trainer.config.trainer.save_freq is not None:

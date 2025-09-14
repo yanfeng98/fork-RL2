@@ -1,5 +1,8 @@
 import functools
+from typing import Callable
+
 import torch
+import torch.distributed as dist
 from torch.distributed.fsdp import (
     FullyShardedDataParallel as FSDP,
     MixedPrecision,
@@ -7,23 +10,25 @@ from torch.distributed.fsdp import (
 )
 from torch.distributed.fsdp.wrap import transformer_auto_wrap_policy
 
-def prepare_dp_model(model, device_mesh):
+from transformers import PreTrainedModel
 
-    def get_module_cls_from_name(name):
+def prepare_dp_model(model: PreTrainedModel, device_mesh: dist.device_mesh.DeviceMesh) -> FSDP:
+
+    def get_module_cls_from_name(name: str) -> type:
         for module in model.modules():
             if module.__class__.__name__ == name:
                 return module.__class__
 
-    transformer_layer_cls = {
+    transformer_layer_cls: set[type] = {
         get_module_cls_from_name(name)
         for name in model._no_split_modules
     }
-    auto_wrap_policy = functools.partial(
+    auto_wrap_policy: Callable[[torch.nn.Module, bool, int], bool] = functools.partial(
         transformer_auto_wrap_policy,
         transformer_layer_cls=transformer_layer_cls
     )
 
-    mixed_precision = MixedPrecision(
+    mixed_precision: MixedPrecision = MixedPrecision(
         param_dtype=torch.bfloat16,
         reduce_dtype=torch.bfloat16,
         buffer_dtype=torch.bfloat16

@@ -1,5 +1,9 @@
 import os
+from omegaconf import DictConfig
+
 import datasets
+from transformers.models.qwen2.tokenization_qwen2 import Qwen2Tokenizer
+
 import torch
 from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
@@ -74,14 +78,14 @@ def pack_tensor_dicts(tensor_dicts):
 
 class BaseDataset(Dataset):
     
-    def __init__(self, config, tokenizer):
+    def __init__(self, config: DictConfig, tokenizer: Qwen2Tokenizer):
 
-        self.config = config
-        self.dataset = (
+        self.config: DictConfig = config
+        self.dataset: Dataset = (
             load_dataset(config.path) if config.path else
             [{} for _ in range(config.prompts_per_rollout)] # for Gym like environments
         )
-        self.tokenizer = tokenizer
+        self.tokenizer: Qwen2Tokenizer = tokenizer
 
     def tokenize_prompt_response(
         self, prompt, response, rm=False
@@ -103,20 +107,20 @@ class BaseDataset(Dataset):
             states, actions, action_mask, self.config.max_length, rm
         )
 
-    def tokenize_messages(self, messages, rm=False):
+    def tokenize_messages(self, messages: list[dict[str, str]], rm: bool = False):
 
         prev_text, states, actions, action_mask = "", [], [], []
         for turn in range(len(messages)):
-            is_this_turn_assistant = messages[turn]["role"] == "assistant"
-            is_next_turn_assistant = turn + 1 < len(messages) and messages[turn + 1]["role"] == "assistant"
+            is_this_turn_assistant: bool = messages[turn]["role"] == "assistant"
+            is_next_turn_assistant: bool = turn + 1 < len(messages) and messages[turn + 1]["role"] == "assistant"
 
-            text = self.tokenizer.apply_chat_template(
+            text: str = self.tokenizer.apply_chat_template(
                 messages[:turn + 1],
                 add_generation_prompt=is_next_turn_assistant,
                 tokenize=False
             )
             assert text[:len(prev_text)] == prev_text
-            state = self.tokenizer.encode(
+            state: list[int] = self.tokenizer.encode(
                 text[len(prev_text):], add_special_tokens=False
             )
             states.extend(state)
@@ -126,7 +130,7 @@ class BaseDataset(Dataset):
                 else len(state) * [0]
             )
             action_mask.extend(len(state) * [is_this_turn_assistant])
-            prev_text = text
+            prev_text: str = text
 
         return get_tensor_dict(
             states, actions, action_mask, self.config.max_length, rm
