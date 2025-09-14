@@ -1,4 +1,5 @@
 import glob
+
 import torch
 import torch.distributed as dist
 import torch.distributed.checkpoint as dcp
@@ -7,11 +8,15 @@ from torch.distributed.checkpoint.state_dict import (
     get_model_state_dict,
     set_model_state_dict
 )
+
 from transformers import AutoModelForSequenceClassification
+
+from RL2.workers.base import Worker
+from RL2.trainer.base import Trainer
 from RL2.utils.offloading import model_offloading_manager
 
 @model_offloading_manager
-def get_state_dict(worker, full_state_dict=False):
+def get_state_dict(worker: Worker, full_state_dict: bool = False) -> dict:
 
     options = StateDictOptions(
         full_state_dict=full_state_dict,
@@ -89,12 +94,12 @@ def save_ckpt(trainer, workers, step):
         checkpoint_id=f"{trainer.config.trainer.save_dir}/step{step}"
     )
 
-def save_model(trainer, worker, rm=False):
+def save_model(trainer: Trainer, worker: Worker, rm: bool = False):
 
-    save_dir = trainer.config.trainer.save_dir
+    save_dir: str = trainer.config.trainer.save_dir
     if trainer.config.trainer.save_freq is not None:
         save_dir += "/latest"
-    state_dict = get_state_dict(
+    state_dict: dict = get_state_dict(
         worker, full_state_dict=True
     )
     if dist.get_rank() == 0:
@@ -103,8 +108,6 @@ def save_model(trainer, worker, rm=False):
         # unwrap the model
         model_to_save = worker.model.module
         if rm:
-            # For RM, we load token classification model for simplicity 
-            # but save sequence classification model for compatibility.
             with torch.device("meta"):
                 model_to_save = AutoModelForSequenceClassification.from_config(
                     model_to_save.config

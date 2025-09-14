@@ -1,6 +1,9 @@
 from collections import defaultdict
+
 import torch
+
 from transformers import AutoModelForCausalLM
+
 from RL2.workers import Worker
 from RL2.utils.sequences import data_manager, count_total
 from RL2.utils.sequence_parallelism import sequence_parallelism_manager
@@ -45,26 +48,24 @@ class Actor(Worker):
     @sequence_parallelism_manager
     def forward(self, minibatch, return_entropy=False):
 
-        logits = self.model(
+        logits: torch.Tensor = self.model(
             input_ids=minibatch["states"],
             position_ids=minibatch["position_ids"],
             use_cache=False
         ).logits.to(torch.float32) / getattr(
             self.config, "temperature", 1.0
         )
-        # bfloat16 is unstable for the subsequent `logsumexp` operation.
-        # See https://github.com/OpenRLHF/OpenRLHF/pull/634.
         
-        logsumexp = compute_logsumexp(logits, self.device_mesh["tp"])
-        action_logits = gather_action_logits(
+        logsumexp: torch.Tensor = compute_logsumexp(logits, self.device_mesh["tp"])
+        action_logits: torch.Tensor = gather_action_logits(
             logits,
             minibatch["actions"],
             self.device_mesh["tp"]
         )
-        logps = (action_logits - logsumexp) * minibatch["action_mask"]
+        logps: torch.Tensor = (action_logits - logsumexp) * minibatch["action_mask"]
         
         if return_entropy:
-            entropy = compute_entropy(
+            entropy: torch.Tensor = compute_entropy(
                 logits, logsumexp, self.device_mesh["tp"]
             ) * minibatch["action_mask"]
             return logps, entropy

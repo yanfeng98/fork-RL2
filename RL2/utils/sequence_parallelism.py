@@ -1,21 +1,26 @@
-from typing import Optional, Dict, Any
 import os
 import functools
+from typing import Optional, Union, Any
+
 import torch
 import torch.distributed as dist
+
 import transformers
 from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from transformers.modeling_flash_attention_utils import (
     _flash_supports_window_size,
     is_flash_attn_greater_or_equal
 )
+
 from ring_flash_attn.llama3_flash_attn_varlen import (
     llama3_flash_attn_varlen_func,
     llama3_flash_attn_prepare_cu_seqlens
 )
 from ring_flash_attn.adapters.hf_adapter import flash_attention_forward
 
-DATA_PARAMS: Dict[str, Any] = {}
+from RL2.workers.base import Worker
+
+DATA_PARAMS: dict[str, Any] = {}
 
 def _flash_attention_forward(
     query_states: torch.Tensor,
@@ -81,25 +86,25 @@ def sequence_parallelism_manager(func):
 
     @functools.wraps(func)
     def forward_with_sequence_parallelism(
-        worker, minibatch, *args, **kwargs
+        worker: Worker, minibatch: dict[str, torch.Tensor], *args, **kwargs
     ):
-        shape = minibatch["states"].shape
-        seq_lens = minibatch["eos_mask"].argmax(-1) + 1
-        minibatch = {
+        shape: torch.Size = minibatch["states"].shape
+        seq_lens: torch.Tensor = minibatch["eos_mask"].argmax(-1) + 1
+        minibatch: dict[str, torch.Tensor] = {
             k: torch.cat([
                 seq[:seq_len] for seq, seq_len in zip(v, seq_lens)
             ]).unsqueeze(0)
             for k, v in minibatch.items()
         }
 
-        multiple_of = worker.device_mesh["sp"].size() * worker.device_mesh["tp"].size()
+        multiple_of: int = worker.device_mesh["sp"].size() * worker.device_mesh["tp"].size()
         if sum(seq_lens) % multiple_of != 0:
-            pad_tokens = multiple_of - sum(seq_lens) % multiple_of
-            seq_lens = torch.cat((
+            pad_tokens: int = multiple_of - sum(seq_lens) % multiple_of
+            seq_lens: torch.LongTensor = torch.cat((
                 seq_lens,
                 torch.LongTensor([pad_tokens]).to(torch.cuda.current_device())
             ))
-            minibatch = {
+            minibatch: dict[str, torch.Tensor] = {
                 k: torch.cat((
                     v,
                     torch.zeros((1, pad_tokens), dtype=v.dtype, device=v.device)
@@ -107,7 +112,7 @@ def sequence_parallelism_manager(func):
                 for k, v in minibatch.items()
             }
 
-        cu_seqlens = torch.cumsum(
+        cu_seqlens: torch.Tensor = torch.cumsum(
             torch.cat((
                 torch.LongTensor([0]).to(torch.cuda.current_device()),
                 seq_lens
@@ -115,8 +120,8 @@ def sequence_parallelism_manager(func):
             dim=0,
             dtype=torch.int32
         )
-        rank = worker.device_mesh["sp"].get_local_rank()
-        world_size = worker.device_mesh["sp"].size()
+        rank: int = worker.device_mesh["sp"].get_local_rank()
+        world_size: int = worker.device_mesh["sp"].size()
         (
             cu_seqlens_q,
             cu_seqlens_k,
@@ -138,13 +143,13 @@ def sequence_parallelism_manager(func):
             "local_k_slice": local_k_slice,
         })
         
-        minibatch = {
+        minibatch: torch.Tensor = {
             k: torch.chunk(v, world_size, dim=-1)[rank]
             for k, v in minibatch.items()
         }
-        output = func(worker, minibatch, *args, **kwargs)
+        output: torch.Tensor = func(worker, minibatch, *args, **kwargs)
 
-        def postprocess(output):
+        def postprocess(output: torch.Tensor) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
 
             if isinstance(output, tuple):
                 return tuple(
@@ -152,7 +157,7 @@ def sequence_parallelism_manager(func):
                     for tensor in output
                 )
             
-            tensors = [
+            tensors: list[torch.Tensor] = [
                 torch.zeros_like(output)
                 for _ in range(world_size)
             ]
@@ -162,9 +167,9 @@ def sequence_parallelism_manager(func):
                 group=worker.device_mesh["sp"].get_group()
             )
             tensors[rank] = output # necessary to retain grad
-            tensor = torch.cat(tensors, -1).squeeze(0)
+            tensor: torch.Tensor = torch.cat(tensors, -1).squeeze(0)
 
-            output = torch.zeros(shape, device=torch.cuda.current_device())
+            output: torch.Tensor = torch.zeros(shape, device=torch.cuda.current_device())
             for row, start_idx, end_idx in zip(
                 range(shape[0]), cu_seqlens[:-1], cu_seqlens[1:]
             ):

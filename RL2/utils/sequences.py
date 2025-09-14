@@ -1,8 +1,10 @@
-from typing import List
 import math
 import functools
+from typing import Union
+
 import torch
 import torch.distributed as dist
+
 from RL2.utils.seqlen_balance import get_seqlen_balanced_partitions
 from RL2.utils.comm import (
     split_and_scatter_list,
@@ -14,22 +16,8 @@ def _tensor_dict_to_minibatches(
     worker, tensor_dict, pair: bool
 ):
 
-    # We pack sequences into minibatches for higher throughput.
-    # There are two constrains:
-    #   * The length of any minibatch cannot exceed `max_length_per_dp`
-    #   * The number of minibatches must be multiple of dp size (so that
-    #     each dp shares identical number of minibatches)
-    # To satisfy the first constraint, the number of minibatches must be
-    # at least `math.ceil(total_length / max_length_per_dp)`.
-    # Starting from the first multiple of dp size that is no less than 
-    # the value, we pack sequences into `n_minibatches` minibatches and 
-    # check whether the first constraint is satisfied. If not, we increase 
-    # `n_minibatches` by dp size (so that the second constraint is always 
-    # satisfied) and repeat the loop.
     seq_len_list = (tensor_dict["eos_mask"].argmax(-1) + 1).tolist()
     if pair:
-        # When pair, every two adjacent sequences will be colocated, so 
-        # their length are summed.
         seq_len_list = torch.tensor(seq_len_list).view(-1, 2).sum(-1).tolist()
     max_length_per_dp = worker.device_mesh["sp"].size() * worker.device_mesh["tp"].size() * (
         worker.config.max_length_per_device
@@ -69,7 +57,7 @@ def _tensor_dict_to_minibatches(
         else:
             PAD_SEQUENCES = 0
 
-        partitions: List[List[int]] = get_seqlen_balanced_partitions(
+        partitions: list[list[int]] = get_seqlen_balanced_partitions(
             seq_len_list, k_partitions=n_minibatches, equal_size=False
         )
         max_minibatch_length = max([
@@ -205,7 +193,7 @@ def data_manager(pack_minibatches=False, pair=False, gather=False):
         return func_with_data_scatter_and_gather
     return decorator
 
-def count_total(minibatches, key, device_mesh):
+def count_total(minibatches: list[dict[str, torch.LongTensor]], key: Union[str, tuple[str, ...]], device_mesh: dist.device_mesh.DeviceMesh) -> Union[float, tuple[float, ...]]:
 
     if isinstance(key, tuple):
         return tuple(
@@ -213,10 +201,10 @@ def count_total(minibatches, key, device_mesh):
             for k in key
         )
         
-    total = sum(
+    total: int  = sum(
         [minibatch[key].sum() for minibatch in minibatches]
     )
-    total = torch.Tensor(
+    total: torch.Tensor = torch.Tensor(
         [total]
     ).to(torch.cuda.current_device())
     dist.all_reduce(

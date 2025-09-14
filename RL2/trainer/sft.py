@@ -1,7 +1,10 @@
 import hydra
-from collections import defaultdict
-import torch.distributed as dist
 from tqdm import tqdm
+from collections import defaultdict
+
+import torch
+import torch.distributed as dist
+
 from RL2.trainer import Trainer
 from RL2.datasets import SFTDataset, get_dataloader
 from RL2.workers import Actor
@@ -13,20 +16,20 @@ from RL2.utils.logging import progress_bar, time_logger, gather_and_log
 
 @time_logger("update_actor")
 @data_manager()
-def update(worker, minibatches, step):
+def update(worker: Actor, minibatches, step):
 
     total_actions, total_sequences = count_total(
         minibatches,
         ("action_mask", "eos_mask"),
         worker.device_mesh["dp"]
     )
-    metrics = defaultdict(list)
+    metrics: dict[str, list[float]] = defaultdict(list)
     for minibatch in progress_bar(
         minibatches, desc="Update actor"
     ):
-        logps = worker.forward(minibatch)
-        loss = aggregate_values(
-            - logps,
+        logps: torch.Tensor = worker.forward(minibatch)
+        loss: torch.Tensor = aggregate_values(
+            -logps,
             minibatch["action_mask"],
             worker.config.avg_level,
             total_actions,

@@ -63,8 +63,7 @@ class Worker:
 
         load_model_to_device(self, "cpu")
             
-    def backward(self, loss):
-        # https://github.com/ChenmienTan/RL2/issues/11
+    def backward(self, loss: torch.Tensor):
         (self.dp_size * self.config.sp_size * loss).backward()
     
     @optimizer_offloading_manager

@@ -1,6 +1,8 @@
 import os
 import math
 from datetime import timedelta
+from typing import Any
+
 import torch
 import torch.distributed as dist
 
@@ -47,9 +49,9 @@ def boardcast_list(lst, device_mesh):
     dist.broadcast_object_list(lst, **kwargs)
     return lst
 
-def gather_and_concat_list(lst, device_mesh):
+def gather_and_concat_list(lst: list[Any], device_mesh: dist.device_mesh.DeviceMesh) -> list[Any]:
 
-    lists = (
+    lists: list[list[Any]] = (
         device_mesh.size() * [None]
         if device_mesh.get_local_rank() == 0
         else None
