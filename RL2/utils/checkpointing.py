@@ -13,10 +13,9 @@ from torch.distributed.checkpoint.state_dict import (
 from transformers import AutoModelForSequenceClassification
 
 from RL2.workers.base import Worker
-from RL2.trainer.base import Trainer
 from RL2.utils.offloading import model_offloading_manager
 
-def load_ckpt(trainer: Trainer, workers: tuple[Worker, ...]) -> int:
+def load_ckpt(trainer, workers: tuple[Worker, ...]) -> int:
 
     checkpoint_id: str|None = trainer.config.trainer.load_ckpt_from
     
@@ -46,7 +45,7 @@ def load_ckpt(trainer: Trainer, workers: tuple[Worker, ...]) -> int:
 
     return ckpt["step"]
 
-def get_ckpt(trainer: Trainer, workers: tuple[Worker, ...], step: int) -> dict[str, Any]:
+def get_ckpt(trainer, workers: tuple[Worker, ...], step: int) -> dict[str, Any]:
 
     ckpt: dict[str, Any] = {
         "step": step,
