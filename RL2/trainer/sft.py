@@ -5,6 +5,7 @@ from collections import defaultdict
 
 import torch
 import torch.distributed as dist
+from torchdata.stateful_dataloader import StatefulDataLoader
 
 from RL2.trainer import Trainer
 from RL2.datasets import SFTDataset, get_dataloader
@@ -53,14 +54,14 @@ class SFTTrainer(Trainer):
         dataset: SFTDataset = SFTDataset(
             config.data, self.actor.tokenizer
         )
-        self.train_dataloader = get_dataloader(
+        self.train_dataloader: StatefulDataLoader = get_dataloader(
             dataset, config.data.batch_size
         )
         self.actor.scheduler = self.prepare_scheduler(self.actor)
 
     def train(self):
 
-        step = load_ckpt(self, (self.actor,))
+        step: int = load_ckpt(self, (self.actor,))
         for epoch in range(
             step // len(self.train_dataloader),
             self.config.trainer.n_epochs

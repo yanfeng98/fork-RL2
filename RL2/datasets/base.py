@@ -9,73 +9,6 @@ from torch.utils.data import Dataset
 from torch.nn.utils.rnn import pad_sequence
 from torchdata.stateful_dataloader import StatefulDataLoader
 
-# TODO (P1): support concatnating multiple datasets
-def load_dataset(data_path):
-
-    if "@" in data_path:
-        split, data_path = data_path.split("@")
-    else:
-        split = "train"
-    
-    ext = os.path.splitext(data_path)[-1].strip(".")
-    if ext in ["json", "jsonl", "csv", "parquet", "arrow"]:
-        if ext == "jsonl":
-            ext = "json"
-        return datasets.load_dataset(ext, data_files=data_path, split=split)
-    else:
-        return datasets.load_dataset(data_path, split=split)
-
-def get_dataloader(dataset, batch_size):
-    return StatefulDataLoader(
-        dataset,
-        batch_size,
-        shuffle=True,
-        drop_last=True,
-        collate_fn=dataset.collate_fn
-    )
-
-def get_tensor_dict(
-    states,
-    actions,
-    action_mask,
-    max_length=None,
-    rm=False
-):
-
-    if not rm:
-        states = states[:-1]
-        actions = actions[1:]
-        action_mask = action_mask[1:]
-
-    if max_length is not None:
-        states = states[:max_length]
-        actions = actions[:max_length]
-        action_mask = action_mask[:max_length]
-
-    tensor_dict = {
-        "states": torch.LongTensor(states),
-        "eos_mask": torch.LongTensor((len(states) - 1) * [0] + [1]),
-        "position_ids": torch.arange(len(states))
-    }
-    if rm:
-        tensor_dict["action_mask"] = torch.LongTensor(
-            (len(states) - 1) * [0] + [1]
-        )
-    else:
-        tensor_dict["actions"] = torch.LongTensor(actions)
-        tensor_dict["action_mask"] = torch.LongTensor(action_mask)
-
-    return tensor_dict
-
-def pack_tensor_dicts(tensor_dicts):
-    return {
-        k: pad_sequence(
-            [tensor_dict[k] for tensor_dict in tensor_dicts], True
-        )
-        for k in tensor_dicts[0].keys()
-    }
-
-
 class BaseDataset(Dataset):
     
     def __init__(self, config: DictConfig, tokenizer: Qwen2Tokenizer):
@@ -88,26 +21,26 @@ class BaseDataset(Dataset):
         self.tokenizer: Qwen2Tokenizer = tokenizer
 
     def tokenize_prompt_response(
-        self, prompt, response, rm=False
-    ):
+        self, prompt: str, response: str, rm: bool = False
+    ) -> dict[str, torch.LongTensor|torch.Tensor]:
         
-        prompt = self.tokenizer.encode(
+        prompt: list[int] = self.tokenizer.encode(
             prompt, add_special_tokens=False
         )
-        response = self.tokenizer.encode(
+        response: list[int] = self.tokenizer.encode(
             response + self.tokenizer.eos_token,
             add_special_tokens=False
         )
         
-        states = prompt + response
-        actions = len(states) * [0] + response
-        action_mask = len(states) * [0] + len(response) * [1]
+        states: list[int] = prompt + response
+        actions: list[int] = len(states) * [0] + response
+        action_mask: list[bool] = len(states) * [0] + len(response) * [1]
         
         return get_tensor_dict(
             states, actions, action_mask, self.config.max_length, rm
         )
 
-    def tokenize_messages(self, messages: list[dict[str, str]], rm: bool = False):
+    def tokenize_messages(self, messages: list[dict[str, str]], rm: bool = False) -> dict[str, torch.LongTensor|torch.Tensor]:
 
         prev_text, states, actions, action_mask = "", [], [], []
         for turn in range(len(messages)):
@@ -138,3 +71,68 @@ class BaseDataset(Dataset):
 
     def __len__(self):
         return len(self.dataset)
+    
+def load_dataset(data_path: str) -> Dataset:
+
+    if "@" in data_path:
+        split, data_path = data_path.split("@")
+    else:
+        split: str = "train"
+    
+    ext: str = os.path.splitext(data_path)[-1].strip(".")
+    if ext in ["json", "jsonl", "csv", "parquet", "arrow"]:
+        if ext == "jsonl":
+            ext = "json"
+        return datasets.load_dataset(ext, data_files=data_path, split=split)
+    else:
+        return datasets.load_dataset(data_path, split=split)
+
+def get_tensor_dict(
+    states: list[int],
+    actions: list[int],
+    action_mask: list[bool],
+    max_length: int = None,
+    rm: bool = False
+) -> dict[str, torch.LongTensor|torch.Tensor]:
+
+    if not rm:
+        states = states[:-1]
+        actions = actions[1:]
+        action_mask = action_mask[1:]
+
+    if max_length:
+        states = states[:max_length]
+        actions = actions[:max_length]
+        action_mask = action_mask[:max_length]
+
+    tensor_dict: dict[str, torch.LongTensor|torch.Tensor] = {
+        "states": torch.LongTensor(states),
+        "eos_mask": torch.LongTensor((len(states) - 1) * [0] + [1]),
+        "position_ids": torch.arange(len(states))
+    }
+    if rm:
+        tensor_dict["action_mask"] = torch.LongTensor(
+            (len(states) - 1) * [0] + [1]
+        )
+    else:
+        tensor_dict["actions"] = torch.LongTensor(actions)
+        tensor_dict["action_mask"] = torch.LongTensor(action_mask)
+
+    return tensor_dict
+
+def pack_tensor_dicts(tensor_dicts: list[dict[str, torch.LongTensor|torch.Tensor]]) -> dict[str, torch.Tensor]:
+    return {
+        k: pad_sequence(
+            [tensor_dict[k] for tensor_dict in tensor_dicts], True
+        )
+        for k in tensor_dicts[0].keys()
+    }
+
+def get_dataloader(dataset: Dataset, batch_size: int) -> StatefulDataLoader:
+    return StatefulDataLoader(
+        dataset,
+        batch_size,
+        shuffle=True,
+        drop_last=True,
+        collate_fn=dataset.collate_fn
+    )

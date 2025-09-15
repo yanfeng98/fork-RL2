@@ -1,4 +1,5 @@
 import glob
+from typing import Any
 
 import torch
 import torch.distributed as dist
@@ -12,30 +13,42 @@ from torch.distributed.checkpoint.state_dict import (
 from transformers import AutoModelForSequenceClassification
 
 from RL2.workers.base import Worker
+from RL2.trainer.base import Trainer
 from RL2.utils.offloading import model_offloading_manager
 
-@model_offloading_manager
-def get_state_dict(worker: Worker, full_state_dict: bool = False) -> dict:
+def load_ckpt(trainer: Trainer, workers: tuple[Worker, ...]) -> int:
 
-    options = StateDictOptions(
-        full_state_dict=full_state_dict,
-        cpu_offload=True
-    )
-    return get_model_state_dict(worker.model, options=options)
-
-def get_worker_ckpt(worker):
+    checkpoint_id: str|None = trainer.config.trainer.load_ckpt_from
     
-    if not hasattr(worker, "state_dict"):
-        worker.state_dict = get_state_dict(worker)
-    return {
-        "model": worker.state_dict,
-        "optimizer": worker.optimizer.state_dict(),
-        "scheduler": worker.scheduler.state_dict()
-    }
+    if not checkpoint_id:
+        return 0
 
-def get_ckpt(trainer, workers, step):
+    if checkpoint_id == "latest":
+        save_dirs: list[str] = glob.glob(f"{trainer.config.trainer.save_dir}/step*")
+        if not save_dirs:
+            return 0
+        checkpoint_id: str = max(
+            save_dirs, key=lambda dir: int(dir.split("/step")[-1])
+        )
+    
+    ckpt: dict[str, Any] = get_ckpt(trainer, workers, 0)
+    
+    dcp.load(ckpt, checkpoint_id=checkpoint_id)
+    trainer.train_dataloader.load_state_dict(ckpt["dataloader"])
+    
+    for idx, worker in enumerate(workers):
+        if hasattr(worker, "model"):
+            load_worker_ckpt(worker, ckpt[f"worker{idx}"])
+        if hasattr(worker, "llm"):
+            if worker.device_mesh["tp"].get_local_rank() == 0:
+                worker.llm.release_memory_occupation()
+            worker.update(workers[0], ckpt["step"])
 
-    ckpt = {
+    return ckpt["step"]
+
+def get_ckpt(trainer: Trainer, workers: tuple[Worker, ...], step: int) -> dict[str, Any]:
+
+    ckpt: dict[str, Any] = {
         "step": step,
         "dataloader": trainer.train_dataloader.state_dict()
     }
@@ -46,42 +59,33 @@ def get_ckpt(trainer, workers, step):
 
     return ckpt
 
+def get_worker_ckpt(worker: Worker) -> dict[str, Any]:
+    
+    if not hasattr(worker, "state_dict"):
+        worker.state_dict = get_state_dict(worker)
+    return {
+        "model": worker.state_dict,
+        "optimizer": worker.optimizer.state_dict(),
+        "scheduler": worker.scheduler.state_dict()
+    }
+
 @model_offloading_manager
-def load_worker_ckpt(worker, ckpt):
+def get_state_dict(worker: Worker, full_state_dict: bool = False) -> dict[str, Any]:
+
+    options: StateDictOptions = StateDictOptions(
+        full_state_dict=full_state_dict,
+        cpu_offload=True
+    )
+    return get_model_state_dict(worker.model, options=options)
+
+@model_offloading_manager
+def load_worker_ckpt(worker: Worker, ckpt: dict[str, Any]) -> None:
 
     set_model_state_dict(
         worker.model, ckpt["model"]
     )
     worker.optimizer.load_state_dict(ckpt["optimizer"])
     worker.scheduler.load_state_dict(ckpt["scheduler"])
-
-def load_ckpt(trainer, workers):
-
-    checkpoint_id = trainer.config.trainer.load_ckpt_from
-    
-    if checkpoint_id is None:
-        return 0
-
-    if checkpoint_id == "latest":
-        save_dirs = glob.glob(f"{trainer.config.trainer.save_dir}/step*")
-        if not save_dirs:
-            return 0
-        checkpoint_id = max(
-            save_dirs, key=lambda dir: int(dir.split("/step")[-1])
-        )
-    
-    ckpt = get_ckpt(trainer, workers, 0)
-    dcp.load(ckpt, checkpoint_id=checkpoint_id)
-    trainer.train_dataloader.load_state_dict(ckpt["dataloader"])
-    for idx, worker in enumerate(workers):
-        if hasattr(worker, "model"):
-            load_worker_ckpt(worker, ckpt[f"worker{idx}"])
-        if hasattr(worker, "llm"):
-            if worker.device_mesh["tp"].get_local_rank() == 0:
-                worker.llm.release_memory_occupation()
-            worker.update(workers[0], ckpt["step"])
-
-    return ckpt["step"]
 
 def save_ckpt(trainer, workers, step):
 
