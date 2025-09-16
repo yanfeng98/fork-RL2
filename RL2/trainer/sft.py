@@ -16,35 +16,6 @@ from RL2.utils.comm import initialize_global_process_group
 from RL2.utils.checkpointing import load_ckpt, save_ckpt, save_model
 from RL2.utils.logging import progress_bar, time_logger, gather_and_log
 
-@time_logger("update_actor")
-@data_manager()
-def update(worker: Actor, minibatches, step):
-
-    total_actions, total_sequences = count_total(
-        minibatches,
-        ("action_mask", "eos_mask"),
-        worker.device_mesh["dp"]
-    )
-    metrics: dict[str, list[float]] = defaultdict(list)
-    for minibatch in progress_bar(
-        minibatches, desc="Update actor"
-    ):
-        logps: torch.Tensor = worker.forward(minibatch)
-        loss: torch.Tensor = aggregate_values(
-            -logps,
-            minibatch["action_mask"],
-            worker.config.avg_level,
-            total_actions,
-            total_sequences
-        )
-        worker.backward(loss)
-        metrics["loss"].append(loss.item())
-
-    grad_norm = worker.optimizer_step()
-    metrics["grad_norm"].append(grad_norm)
-    gather_and_log(metrics, worker.device_mesh["dp"], step)
-
-
 class SFTTrainer(Trainer):
 
     def __init__(self, config: DictConfig):
@@ -77,6 +48,33 @@ class SFTTrainer(Trainer):
                 save_ckpt(self, (self.actor,), step)
         save_model(self, self.actor)
 
+@time_logger("update_actor")
+@data_manager()
+def update(worker: Actor, minibatches, step):
+
+    total_actions, total_sequences = count_total(
+        minibatches,
+        ("action_mask", "eos_mask"),
+        worker.device_mesh["dp"]
+    )
+    metrics: dict[str, list[float]] = defaultdict(list)
+    for minibatch in progress_bar(
+        minibatches, desc="Update actor"
+    ):
+        logps: torch.Tensor = worker.forward(minibatch)
+        loss: torch.Tensor = aggregate_values(
+            -logps,
+            minibatch["action_mask"],
+            worker.config.avg_level,
+            total_actions,
+            total_sequences
+        )
+        worker.backward(loss)
+        metrics["loss"].append(loss.item())
+
+    grad_norm = worker.optimizer_step()
+    metrics["grad_norm"].append(grad_norm)
+    gather_and_log(metrics, worker.device_mesh["dp"], step)
 
 @hydra.main(config_path="config", config_name="sft", version_base=None)
 def main(config: DictConfig) -> None:

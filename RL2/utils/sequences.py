@@ -12,84 +12,71 @@ from RL2.utils.comm import (
     gather_and_concat_list
 )
 
-def _tensor_dict_to_minibatches(
-    worker, tensor_dict, pair: bool
-):
 
-    seq_len_list = (tensor_dict["eos_mask"].argmax(-1) + 1).tolist()
-    if pair:
-        seq_len_list = torch.tensor(seq_len_list).view(-1, 2).sum(-1).tolist()
-    max_length_per_dp = worker.device_mesh["sp"].size() * worker.device_mesh["tp"].size() * (
-        worker.config.max_length_per_device
-        if torch.is_grad_enabled()
-        else worker.config.max_inference_length_per_device
-    )
-    assert max(seq_len_list) <= max_length_per_dp, \
-        f"The longest sequence has a total length of {max(seq_len_list)}," \
-        f"which exceeds the maximum length per dp {max_length_per_dp}."
-    n_minibatches = math.ceil(
-        sum(seq_len_list) / max_length_per_dp
-    )
-    multiple_of = worker.device_mesh["dp"].size()
-    if n_minibatches % multiple_of != 0:
-        n_minibatches += multiple_of - n_minibatches % multiple_of
 
-    # Partition sequences into n_minibatches balanced minibatches.
-    while True:
 
-        global PAD_SEQUENCES
-        if n_minibatches > len(seq_len_list):
-            # The number of sequences must be no less than `n_minibatches`.
-            # If not, we pad the number of sequences to `n_minibatches`.
-            PAD_SEQUENCES = n_minibatches - len(seq_len_list)
-            for k, v in tensor_dict.items():
-                tensor_dict[k] = torch.cat((
-                    v,
-                    torch.zeros(
-                        (
-                            (2 if pair else 1) * PAD_SEQUENCES,
-                            v.shape[-1]
-                        ),
-                        dtype=v.dtype
-                    )
-                ))
-            seq_len_list.extend(PAD_SEQUENCES * [0])
-        else:
-            PAD_SEQUENCES = 0
 
-        partitions: list[list[int]] = get_seqlen_balanced_partitions(
-            seq_len_list, k_partitions=n_minibatches, equal_size=False
-        )
-        max_minibatch_length = max([
-            sum([seq_len_list[p] for p in partition])
-            for partition in partitions
-        ])
-        if max_minibatch_length <= max_length_per_dp:
-            break
-        n_minibatches += worker.device_mesh["dp"].size()
-
-    if pair:
-        partitions = [
-            sum([[2 * p, 2 * p + 1] for p in partition], [])
-            for partition in partitions
-        ]
-    global SHUFFLE_INDICES
-    SHUFFLE_INDICES = sum(partitions, [])
-
-    return [
+def minibatches_to_tensor_dict(worker, minibatches):
+    
+    minibatches = [
         {
-            k: v[partition] for k, v in tensor_dict.items()
+            k: v.to("cpu")
+            for k, v in minibatch.items()
         }
-        for partition in partitions
+        for minibatch in minibatches
     ]
+    minibatches = gather_and_concat_list(
+        minibatches, worker.device_mesh["dp"]
+    )
+    if dist.get_rank() == 0:
+
+        tensor_dict = {
+            k: torch.cat([
+                minibatch[k] for minibatch in minibatches
+            ])
+            for k in minibatches[0].keys()
+        }
+
+        reversed_indices = len(SHUFFLE_INDICES) * [None]
+        for idx, shuffle_idx in enumerate(SHUFFLE_INDICES):
+            reversed_indices[shuffle_idx] = idx
+        tensor_dict = {
+            k: v[reversed_indices]
+            for k, v in tensor_dict.items()
+        }
+
+        if PAD_SEQUENCES > 0:
+            tensor_dict = {
+                k: v[:-PAD_SEQUENCES]
+                for k, v in tensor_dict.items()
+            }
+
+        return tensor_dict
+
+def data_manager(pack_minibatches: bool = False, pair: bool = False, gather: bool = False):
+    def decorator(func):
+        @functools.wraps(func)
+        def func_with_data_scatter_and_gather(
+            worker, tensor_dict: dict[str, torch.Tensor], *args, **kwargs
+        ):
+            minibatches = tensor_dict_to_minibatches(
+                worker, tensor_dict, pack_minibatches, pair
+            )
+            
+            output = func(worker, minibatches, *args, **kwargs)
+            
+            if gather:
+                output = minibatches_to_tensor_dict(worker, output)
+            return output
+        
+        return func_with_data_scatter_and_gather
+    return decorator
 
 def tensor_dict_to_minibatches(
-    worker, tensor_dict, pack_minibatches: bool, pair: bool
-):
+    worker, tensor_dict: dict[str, torch.Tensor], pack_minibatches: bool, pair: bool
+) -> list:
 
     if pack_minibatches:
-        # Pack minibatches into multiple batches, where each batch is 
-        # used for an update.
         if dist.get_rank() == 0:
             return [
                 tensor_dict_to_minibatches(
@@ -140,58 +127,78 @@ def tensor_dict_to_minibatches(
         for minibatch in minibatches
     ]
 
-def minibatches_to_tensor_dict(worker, minibatches):
+def _tensor_dict_to_minibatches(
+    worker, tensor_dict: dict[str, torch.Tensor], pair: bool
+):
+
+    seq_len_list: list[int] = (tensor_dict["eos_mask"].argmax(-1) + 1).tolist()
     
-    minibatches = [
-        {
-            k: v.to("cpu")
-            for k, v in minibatch.items()
-        }
-        for minibatch in minibatches
-    ]
-    minibatches = gather_and_concat_list(
-        minibatches, worker.device_mesh["dp"]
+    if pair:
+        seq_len_list = torch.tensor(seq_len_list).view(-1, 2).sum(-1).tolist()
+    
+    max_length_per_dp: int = worker.device_mesh["sp"].size() * worker.device_mesh["tp"].size() * (
+        worker.config.max_length_per_device
+        if torch.is_grad_enabled()
+        else worker.config.max_inference_length_per_device
     )
-    if dist.get_rank() == 0:
+    assert max(seq_len_list) <= max_length_per_dp, \
+        f"The longest sequence has a total length of {max(seq_len_list)}," \
+        f"which exceeds the maximum length per dp {max_length_per_dp}."
+    
+    n_minibatches: int = math.ceil(
+        sum(seq_len_list) / max_length_per_dp
+    )
+    multiple_of: int = worker.device_mesh["dp"].size()
+    if n_minibatches % multiple_of != 0:
+        n_minibatches += multiple_of - n_minibatches % multiple_of
 
-        tensor_dict = {
-            k: torch.cat([
-                minibatch[k] for minibatch in minibatches
-            ])
-            for k in minibatches[0].keys()
+    while True:
+
+        global PAD_SEQUENCES
+        if n_minibatches > len(seq_len_list):
+            # The number of sequences must be no less than `n_minibatches`.
+            # If not, we pad the number of sequences to `n_minibatches`.
+            PAD_SEQUENCES = n_minibatches - len(seq_len_list)
+            for k, v in tensor_dict.items():
+                tensor_dict[k] = torch.cat((
+                    v,
+                    torch.zeros(
+                        (
+                            (2 if pair else 1) * PAD_SEQUENCES,
+                            v.shape[-1]
+                        ),
+                        dtype=v.dtype
+                    )
+                ))
+            seq_len_list.extend(PAD_SEQUENCES * [0])
+        else:
+            PAD_SEQUENCES = 0
+
+        partitions: list[list[int]] = get_seqlen_balanced_partitions(
+            seq_len_list, k_partitions=n_minibatches, equal_size=False
+        )
+        max_minibatch_length = max([
+            sum([seq_len_list[p] for p in partition])
+            for partition in partitions
+        ])
+        if max_minibatch_length <= max_length_per_dp:
+            break
+        n_minibatches += worker.device_mesh["dp"].size()
+
+    if pair:
+        partitions = [
+            sum([[2 * p, 2 * p + 1] for p in partition], [])
+            for partition in partitions
+        ]
+    global SHUFFLE_INDICES
+    SHUFFLE_INDICES = sum(partitions, [])
+
+    return [
+        {
+            k: v[partition] for k, v in tensor_dict.items()
         }
-
-        reversed_indices = len(SHUFFLE_INDICES) * [None]
-        for idx, shuffle_idx in enumerate(SHUFFLE_INDICES):
-            reversed_indices[shuffle_idx] = idx
-        tensor_dict = {
-            k: v[reversed_indices]
-            for k, v in tensor_dict.items()
-        }
-
-        if PAD_SEQUENCES > 0:
-            tensor_dict = {
-                k: v[:-PAD_SEQUENCES]
-                for k, v in tensor_dict.items()
-            }
-
-        return tensor_dict
-
-def data_manager(pack_minibatches=False, pair=False, gather=False):
-    def decorator(func):
-        @functools.wraps(func)
-        def func_with_data_scatter_and_gather(
-            worker, tensor_dict, *args, **kwargs
-        ):
-            minibatches = tensor_dict_to_minibatches(
-                worker, tensor_dict, pack_minibatches, pair
-            )
-            output = func(worker, minibatches, *args, **kwargs)
-            if gather:
-                output = minibatches_to_tensor_dict(worker, output)
-            return output
-        return func_with_data_scatter_and_gather
-    return decorator
+        for partition in partitions
+    ]
 
 def count_total(minibatches: list[dict[str, torch.LongTensor]], key: Union[str, tuple[str, ...]], device_mesh: dist.device_mesh.DeviceMesh) -> Union[float, tuple[float, ...]]:
 
