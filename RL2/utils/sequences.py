@@ -59,7 +59,8 @@ def data_manager(pack_minibatches: bool = False, pair: bool = False, gather: boo
         def func_with_data_scatter_and_gather(
             worker, tensor_dict: dict[str, torch.Tensor], *args, **kwargs
         ):
-            minibatches = tensor_dict_to_minibatches(
+            # torch.Tensor: [batch_size, seq_len]
+            minibatches: list[dict[str, torch.Tensor]] = tensor_dict_to_minibatches(
                 worker, tensor_dict, pack_minibatches, pair
             )
             
@@ -74,7 +75,7 @@ def data_manager(pack_minibatches: bool = False, pair: bool = False, gather: boo
 
 def tensor_dict_to_minibatches(
     worker, tensor_dict: dict[str, torch.Tensor], pack_minibatches: bool, pair: bool
-) -> list:
+) -> list[dict[str, torch.Tensor]]:
 
     if pack_minibatches:
         if dist.get_rank() == 0:
@@ -98,27 +99,28 @@ def tensor_dict_to_minibatches(
     if worker.device_mesh["tp"].get_local_rank() == 0:
         if worker.device_mesh["sp"].get_local_rank() == 0:
             if worker.device_mesh["dp"].get_local_rank() == 0:
-                minibatches = _tensor_dict_to_minibatches(
+                minibatches: list[dict[str, torch.Tensor]] = _tensor_dict_to_minibatches(
                     worker, tensor_dict, pair
                 )
-            minibatches = split_and_scatter_list(
+            minibatches: list[dict[str, torch.Tensor]] = split_and_scatter_list(
                 minibatches
                 if worker.device_mesh["dp"].get_local_rank() == 0
                 else None,
                 worker.device_mesh["dp"]
             )
-        minibatches = boardcast_list(
+        minibatches: list[dict[str, torch.Tensor]] = boardcast_list(
             minibatches
             if worker.device_mesh["sp"].get_local_rank() == 0
             else None,
             worker.device_mesh["sp"]
         )
-    minibatches = boardcast_list(
+    minibatches: list[dict[str, torch.Tensor]] = boardcast_list(
         minibatches
         if worker.device_mesh["tp"].get_local_rank() == 0
         else None,
         worker.device_mesh["tp"]
     )
+
     return [
         {
             k: v.to(torch.cuda.current_device())
@@ -129,7 +131,7 @@ def tensor_dict_to_minibatches(
 
 def _tensor_dict_to_minibatches(
     worker, tensor_dict: dict[str, torch.Tensor], pair: bool
-):
+) -> list[dict[str, torch.Tensor]]:
 
     seq_len_list: list[int] = (tensor_dict["eos_mask"].argmax(-1) + 1).tolist()
     
@@ -156,8 +158,6 @@ def _tensor_dict_to_minibatches(
 
         global PAD_SEQUENCES
         if n_minibatches > len(seq_len_list):
-            # The number of sequences must be no less than `n_minibatches`.
-            # If not, we pad the number of sequences to `n_minibatches`.
             PAD_SEQUENCES = n_minibatches - len(seq_len_list)
             for k, v in tensor_dict.items():
                 tensor_dict[k] = torch.cat((
@@ -177,7 +177,7 @@ def _tensor_dict_to_minibatches(
         partitions: list[list[int]] = get_seqlen_balanced_partitions(
             seq_len_list, k_partitions=n_minibatches, equal_size=False
         )
-        max_minibatch_length = max([
+        max_minibatch_length: int = max([
             sum([seq_len_list[p] for p in partition])
             for partition in partitions
         ])
@@ -186,10 +186,11 @@ def _tensor_dict_to_minibatches(
         n_minibatches += worker.device_mesh["dp"].size()
 
     if pair:
-        partitions = [
+        partitions: list[list[int]] = [
             sum([[2 * p, 2 * p + 1] for p in partition], [])
             for partition in partitions
         ]
+
     global SHUFFLE_INDICES
     SHUFFLE_INDICES = sum(partitions, [])
 
