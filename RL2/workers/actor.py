@@ -47,8 +47,9 @@ class Actor(Worker):
         self.prepare_model_optimizer()
 
     @sequence_parallelism_manager
-    def forward(self, minibatch, return_entropy=False):
+    def forward(self, minibatch: dict[str, torch.Tensor], return_entropy: bool = False):
 
+        # 1, seq_len, vocab_size
         logits: torch.Tensor = self.model(
             input_ids=minibatch["states"],
             position_ids=minibatch["position_ids"],

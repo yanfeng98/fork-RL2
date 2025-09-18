@@ -15,13 +15,15 @@ def compute_logsumexp(logits: torch.Tensor, device_mesh: dist.device_mesh.Device
 
     logsumexps: list[torch.Tensor] = []
     for start in range(0, logits.shape[1], chunk_size):
+        # batch_size, chunk
         logsumexp: torch.Tensor = torch.logsumexp(
             logits[:, start:start + chunk_size], -1
         )
         logsumexps.append(logsumexp)
-    logsumexp = torch.cat(logsumexps, -1)
+    # batch_size, seq_len
+    logsumexp: torch.Tensor = torch.cat(logsumexps, -1)
 
-    logsumexps = [
+    logsumexps: list[torch.Tensor] = [
         torch.zeros_like(logsumexp)
         for _ in range(device_mesh.size())
     ]
@@ -31,9 +33,11 @@ def compute_logsumexp(logits: torch.Tensor, device_mesh: dist.device_mesh.Device
         group=device_mesh.get_group()
     )
     logsumexps[device_mesh.get_local_rank()] = logsumexp # necessary to retain grad
+    
     logsumexps: torch.Tensor = torch.cat([
         logsumexp.unsqueeze(-1) for logsumexp in logsumexps
-    ], -1)
+    ], -1) # batch_size, seq_len, tp_size
+
     return torch.logsumexp(logsumexps, -1)
 
 def gather_action_logits(logits: torch.Tensor, actions: torch.Tensor, device_mesh: dist.device_mesh.DeviceMesh) -> torch.Tensor:

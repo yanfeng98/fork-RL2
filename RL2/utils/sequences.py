@@ -201,7 +201,7 @@ def _tensor_dict_to_minibatches(
         for partition in partitions
     ]
 
-def count_total(minibatches: list[dict[str, torch.LongTensor]], key: Union[str, tuple[str, ...]], device_mesh: dist.device_mesh.DeviceMesh) -> Union[float, tuple[float, ...]]:
+def count_total(minibatches: list[dict[str, torch.Tensor]], key: Union[str, tuple[str, ...]], device_mesh: dist.device_mesh.DeviceMesh) -> Union[float, tuple[float, ...]]:
 
     if isinstance(key, tuple):
         return tuple(
@@ -215,6 +215,7 @@ def count_total(minibatches: list[dict[str, torch.LongTensor]], key: Union[str, 
     total: torch.Tensor = torch.Tensor(
         [total]
     ).to(torch.cuda.current_device())
+    
     dist.all_reduce(
         total,
         op=dist.ReduceOp.SUM,

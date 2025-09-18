@@ -6,15 +6,6 @@ from tqdm import tqdm
 import wandb
 from RL2.utils.comm import gather_and_concat_list
 
-def progress_bar(*args, **kwargs):
-    return tqdm(
-        *args,
-        position=1,
-        leave=False,
-        disable=(dist.get_rank() != 0),
-        **kwargs
-    )
-
 def time_logger(name: str):
     def decorator(func):
         sig: inspect.Signature = inspect.signature(func)
@@ -37,6 +28,15 @@ def time_logger(name: str):
         
         return wrapper
     return decorator
+
+def progress_bar(*args, **kwargs) -> tqdm:
+    return tqdm(
+        *args,
+        position=1,
+        leave=False,
+        disable=(dist.get_rank() != 0),
+        **kwargs
+    )
 
 def gather_and_log(metrics: dict[str, list[float]], device_mesh: dist.device_mesh.DeviceMesh, step: int, metrics_to_sum: list[str] = ["loss"]):
 

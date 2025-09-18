@@ -50,13 +50,14 @@ class SFTTrainer(Trainer):
 
 @time_logger("update_actor")
 @data_manager()
-def update(worker: Actor, minibatches, step):
+def update(worker: Actor, minibatches: list[dict[str, torch.Tensor]], step: int) -> None:
 
     total_actions, total_sequences = count_total(
         minibatches,
         ("action_mask", "eos_mask"),
         worker.device_mesh["dp"]
     )
+    
     metrics: dict[str, list[float]] = defaultdict(list)
     for minibatch in progress_bar(
         minibatches, desc="Update actor"

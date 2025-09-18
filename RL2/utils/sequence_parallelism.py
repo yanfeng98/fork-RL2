@@ -48,7 +48,7 @@ def _flash_attention_forward(
         and sliding_window is not None
         and key_states.shape[1] > sliding_window
     )
-    flash_kwargs = (
+    flash_kwargs: dict[str, Any] = (
         {"window_size": (sliding_window, sliding_window)}
         if use_sliding_windows
         else {}
@@ -88,8 +88,11 @@ def sequence_parallelism_manager(func):
     def forward_with_sequence_parallelism(
         worker: Worker, minibatch: dict[str, torch.Tensor], *args, **kwargs
     ):
+        # batch_size, seq_len
         shape: torch.Size = minibatch["states"].shape
+        # batch_size
         seq_lens: torch.Tensor = minibatch["eos_mask"].argmax(-1) + 1
+        # 1, seq_len
         minibatch: dict[str, torch.Tensor] = {
             k: torch.cat([
                 seq[:seq_len] for seq, seq_len in zip(v, seq_lens)
@@ -98,9 +101,11 @@ def sequence_parallelism_manager(func):
         }
 
         multiple_of: int = worker.device_mesh["sp"].size() * worker.device_mesh["tp"].size()
+
         if sum(seq_lens) % multiple_of != 0:
             pad_tokens: int = multiple_of - sum(seq_lens) % multiple_of
-            seq_lens: torch.LongTensor = torch.cat((
+            
+            seq_lens: torch.Tensor = torch.cat((
                 seq_lens,
                 torch.LongTensor([pad_tokens]).to(torch.cuda.current_device())
             ))
@@ -112,6 +117,7 @@ def sequence_parallelism_manager(func):
                 for k, v in minibatch.items()
             }
 
+        # batch_size + 1
         cu_seqlens: torch.Tensor = torch.cumsum(
             torch.cat((
                 torch.LongTensor([0]).to(torch.cuda.current_device()),
@@ -122,6 +128,7 @@ def sequence_parallelism_manager(func):
         )
         rank: int = worker.device_mesh["sp"].get_local_rank()
         world_size: int = worker.device_mesh["sp"].size()
+        
         (
             cu_seqlens_q,
             cu_seqlens_k,
@@ -134,6 +141,7 @@ def sequence_parallelism_manager(func):
             rank,
             world_size
         )
+        
         DATA_PARAMS.update({
             "group": worker.device_mesh["sp"].get_group(),
             "cu_seqlens_q": cu_seqlens_q,
@@ -143,10 +151,12 @@ def sequence_parallelism_manager(func):
             "local_k_slice": local_k_slice,
         })
         
-        minibatch: torch.Tensor = {
+        # 1, seq_len
+        minibatch: dict[str, torch.Tensor] = {
             k: torch.chunk(v, world_size, dim=-1)[rank]
             for k, v in minibatch.items()
         }
+
         output: torch.Tensor = func(worker, minibatch, *args, **kwargs)
 
         def postprocess(output: torch.Tensor) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
