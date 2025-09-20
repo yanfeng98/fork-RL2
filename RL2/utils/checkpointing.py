@@ -86,7 +86,7 @@ def load_worker_ckpt(worker: Worker, ckpt: dict[str, Any]) -> None:
     worker.optimizer.load_state_dict(ckpt["optimizer"])
     worker.scheduler.load_state_dict(ckpt["scheduler"])
 
-def save_ckpt(trainer, workers, step):
+def save_ckpt(trainer, workers: tuple[Worker, ...], step: int) -> None:
 
     if trainer.config.trainer.save_freq is None or step % trainer.config.trainer.save_freq != 0:
         return
@@ -96,7 +96,7 @@ def save_ckpt(trainer, workers, step):
         checkpoint_id=f"{trainer.config.trainer.save_dir}/step{step}"
     )
 
-def save_model(trainer, worker: Worker, rm: bool = False):
+def save_model(trainer, worker: Worker, rm: bool = False) -> None:
 
     save_dir: str = trainer.config.trainer.save_dir
     if trainer.config.trainer.save_freq is not None:

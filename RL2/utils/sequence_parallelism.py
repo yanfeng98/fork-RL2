@@ -156,6 +156,7 @@ def sequence_parallelism_manager(func):
             for k, v in minibatch.items()
         }
 
+        # 1, seq_len
         output: torch.Tensor = func(worker, minibatch, *args, **kwargs)
 
         def postprocess(output: torch.Tensor) -> Union[torch.Tensor, tuple[torch.Tensor, ...]]:
@@ -176,8 +177,10 @@ def sequence_parallelism_manager(func):
                 group=worker.device_mesh["sp"].get_group()
             )
             tensors[rank] = output # necessary to retain grad
+            # seq_len
             tensor: torch.Tensor = torch.cat(tensors, -1).squeeze(0)
 
+            # batch_size, seq_len
             output: torch.Tensor = torch.zeros(shape, device=torch.cuda.current_device())
             for row, start_idx, end_idx in zip(
                 range(shape[0]), cu_seqlens[:-1], cu_seqlens[1:]

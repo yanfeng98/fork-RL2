@@ -1,16 +1,6 @@
 import torch
 import torch.distributed as dist
 
-def differentiable_all_reduce(tensor: torch.Tensor, device_mesh: dist.device_mesh.DeviceMesh) -> torch.Tensor:
-
-    detached_tensor: torch.Tensor = tensor.detach()
-    dist.all_reduce(
-        detached_tensor,
-        op=dist.ReduceOp.SUM,
-        group=device_mesh.get_group()
-    )
-    return tensor + detached_tensor - tensor.detach()
-
 def compute_logsumexp(logits: torch.Tensor, device_mesh: dist.device_mesh.DeviceMesh, chunk_size: int = 1024) -> torch.Tensor:
 
     logsumexps: list[torch.Tensor] = []
@@ -46,29 +36,35 @@ def gather_action_logits(logits: torch.Tensor, actions: torch.Tensor, device_mes
     start_idx: int = rank * logits.shape[-1]
     end_idx: int = (rank + 1) * logits.shape[-1]
 
+    # 1, seq_len
     local_mask: torch.Tensor = (actions >= start_idx) & (actions < end_idx)
+    # 1, seq_len
     local_actions: torch.Tensor = torch.where(
         local_mask, actions - start_idx, 0
     )
 
+    # 1, seq_len
     action_logits: torch.Tensor = torch.where(
         local_mask,
         torch.gather(
             logits,
             dim=-1,
-            index=local_actions.unsqueeze(-1)
+            index=local_actions.unsqueeze(-1) # 1, seq_len, 1
         ).squeeze(-1),
         0.0
     )
 
     return differentiable_all_reduce(action_logits, device_mesh)
 
-def compute_entropy(logits: torch.Tensor, logsumexp: torch.Tensor, device_mesh: dist.device_mesh.DeviceMesh):
+def differentiable_all_reduce(tensor: torch.Tensor, device_mesh: dist.device_mesh.DeviceMesh) -> torch.Tensor:
 
-    probs: torch.Tensor = torch.exp(logits - logsumexp.unsqueeze(-1))
-    return logsumexp - differentiable_all_reduce(
-        (probs * logits).sum(-1), device_mesh
+    detached_tensor: torch.Tensor = tensor.detach()
+    dist.all_reduce(
+        detached_tensor,
+        op=dist.ReduceOp.SUM,
+        group=device_mesh.get_group()
     )
+    return tensor + detached_tensor - tensor.detach()
 
 def aggregate_values(
     tensor: torch.Tensor,
@@ -100,3 +96,10 @@ def aggregate_values(
         ).sum() / total_sequences
     else:
         raise NotImplementedError
+
+def compute_entropy(logits: torch.Tensor, logsumexp: torch.Tensor, device_mesh: dist.device_mesh.DeviceMesh):
+
+    probs: torch.Tensor = torch.exp(logits - logsumexp.unsqueeze(-1))
+    return logsumexp - differentiable_all_reduce(
+        (probs * logits).sum(-1), device_mesh
+    )

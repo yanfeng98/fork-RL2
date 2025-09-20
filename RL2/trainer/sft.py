@@ -62,6 +62,7 @@ def update(worker: Actor, minibatches: list[dict[str, torch.Tensor]], step: int)
     for minibatch in progress_bar(
         minibatches, desc="Update actor"
     ):
+        # batch_size, seq_len
         logps: torch.Tensor = worker.forward(minibatch)
         loss: torch.Tensor = aggregate_values(
             -logps,
@@ -73,7 +74,7 @@ def update(worker: Actor, minibatches: list[dict[str, torch.Tensor]], step: int)
         worker.backward(loss)
         metrics["loss"].append(loss.item())
 
-    grad_norm = worker.optimizer_step()
+    grad_norm: float = worker.optimizer_step()
     metrics["grad_norm"].append(grad_norm)
     gather_and_log(metrics, worker.device_mesh["dp"], step)
 

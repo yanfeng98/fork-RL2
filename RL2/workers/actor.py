@@ -58,12 +58,15 @@ class Actor(Worker):
             self.config, "temperature", 1.0
         )
         
+        # 1, seq_len
         logsumexp: torch.Tensor = compute_logsumexp(logits, self.device_mesh["tp"])
+        # 1, seq_len
         action_logits: torch.Tensor = gather_action_logits(
             logits,
-            minibatch["actions"],
+            minibatch["actions"], # 1, seq_len
             self.device_mesh["tp"]
         )
+        # 1, seq_len
         logps: torch.Tensor = (action_logits - logsumexp) * minibatch["action_mask"]
         
         if return_entropy:
